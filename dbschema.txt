@@ -1,0 +1,112 @@
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(255),
+  avatar TEXT,
+  provider VARCHAR(50),
+  provider_id VARCHAR(255),
+  role VARCHAR(50) DEFAULT 'advisor',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_credentials (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  service VARCHAR(50) NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, service)
+);
+
+-- For RAG and vector search
+CREATE TABLE email_embeddings (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  email_id VARCHAR(255),
+  subject TEXT,
+  content TEXT,
+  sender VARCHAR(255),
+  recipient VARCHAR(255),
+  thread_id VARCHAR(255),
+  embedding vector(1536),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE hubspot_embeddings (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  contact_id VARCHAR(255),
+  contact_name VARCHAR(255),
+  email VARCHAR(255),
+  notes TEXT,
+  properties JSONB,
+  embedding vector(1536),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- For task management and memory
+CREATE TABLE tasks (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(100) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  data JSONB,
+  result JSONB,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- For ongoing instructions and memory
+CREATE TABLE ongoing_instructions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  instruction TEXT NOT NULL,
+  trigger_type VARCHAR(100),
+  is_active BOOLEAN DEFAULT true,
+  priority INTEGER DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- For conversation history
+CREATE TABLE conversations (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  session_id VARCHAR(255),
+  messages JSONB,
+  context JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- For calendar events tracking
+CREATE TABLE calendar_events (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  event_id VARCHAR(255),
+  summary TEXT,
+  description TEXT,
+  start_time TIMESTAMP,
+  end_time TIMESTAMP,
+  attendees JSONB,
+  status VARCHAR(50),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for better performance
+CREATE INDEX idx_email_embeddings_user_id ON email_embeddings(user_id);
+CREATE INDEX idx_hubspot_embeddings_user_id ON hubspot_embeddings(user_id);
+CREATE INDEX idx_tasks_user_id_status ON tasks(user_id, status);
+CREATE INDEX idx_ongoing_instructions_user_id ON ongoing_instructions(user_id, is_active);
+CREATE INDEX idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX idx_calendar_events_user_id ON calendar_events(user_id);
+
+-- Vector similarity search indexes
+CREATE INDEX idx_email_embeddings_vector ON email_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX idx_hubspot_embeddings_vector ON hubspot_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
