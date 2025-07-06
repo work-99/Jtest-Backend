@@ -19,7 +19,7 @@ declare global {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-export const googleAuth = async (req: Request, res: Response) => {
+export const googleAuth = async (req: Request, res: Response): Promise<void> => {
   try {
     const authUrl = getGoogleAuthUrl();
     res.json({ authUrl });
@@ -29,12 +29,13 @@ export const googleAuth = async (req: Request, res: Response) => {
   }
 };
 
-export const googleCallback = async (req: Request, res: Response) => {
+export const googleCallback = async (req: Request, res: Response): Promise<void> => {
   try {
     const { code } = req.query;
     
     if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Authorization code required' });
+      res.status(400).json({ error: 'Authorization code required' });
+      return;
     }
 
     // Get tokens from Google
@@ -44,7 +45,8 @@ export const googleCallback = async (req: Request, res: Response) => {
     const userData = await getUserData(tokens);
     
     if (!userData?.email) {
-      return res.status(400).json({ error: 'Failed to get user email from Google' });
+      res.status(400).json({ error: 'Failed to get user email from Google' });
+      return;
     }
 
     // Check if user exists
@@ -80,14 +82,15 @@ export const googleCallback = async (req: Request, res: Response) => {
     // Redirect to frontend with token
     const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`;
     res.redirect(redirectUrl);
-    
+    return;
   } catch (error) {
     console.error('Google callback error:', error);
     res.status(500).json({ error: 'Authentication failed' });
+    return;
   }
 };
 
-export const hubspotAuth = async (req: Request, res: Response) => {
+export const hubspotAuth = async (req: Request, res: Response): Promise<void> => {
   try {
     const authUrl = getHubspotAuthUrl();
     res.json({ authUrl });
@@ -97,17 +100,19 @@ export const hubspotAuth = async (req: Request, res: Response) => {
   }
 };
 
-export const hubspotCallback = async (req: Request, res: Response) => {
+export const hubspotCallback = async (req: Request, res: Response): Promise<void> => {
   try {
     const { code } = req.query;
     const userId = req.user?.id;
     
     if (!userId) {
-      return res.status(401).json({ error: 'User not authenticated' });
+      res.status(401).json({ error: 'User not authenticated' });
+      return;
     }
     
     if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Authorization code required' });
+      res.status(400).json({ error: 'Authorization code required' });
+      return;
     }
 
     // Get tokens from HubSpot
@@ -117,24 +122,27 @@ export const hubspotCallback = async (req: Request, res: Response) => {
     await saveHubspotCredentials(userId.toString(), tokens);
 
     res.json({ success: true, message: 'HubSpot connected successfully' });
-    
+    return;
   } catch (error) {
     console.error('HubSpot callback error:', error);
     res.status(500).json({ error: 'HubSpot authentication failed' });
+    return;
   }
 };
 
-export const checkAuthStatus = async (req: Request, res: Response) => {
+export const checkAuthStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
     
     if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
     }
 
     const user = await UserModel.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found' });
+      return;
     }
 
     const connectedServices = await UserModel.getConnectedServices(userId);
@@ -149,34 +157,39 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       },
       connectedServices
     });
-    
+    return;
   } catch (error) {
     console.error('Auth status check error:', error);
     res.status(500).json({ error: 'Failed to check auth status' });
+    return;
   }
 };
 
-export const logout = async (req: Request, res: Response) => {
+export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
     // In a real implementation, you might want to blacklist the token
     res.json({ success: true, message: 'Logged out successfully' });
+    return;
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Logout failed' });
+    return;
   }
 };
 
-export const refreshToken = async (req: Request, res: Response) => {
+export const refreshToken = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
     
     if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
     }
 
     const user = await UserModel.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ error: 'User not found' });
+      return;
     }
 
     // Generate new JWT token
@@ -191,9 +204,10 @@ export const refreshToken = async (req: Request, res: Response) => {
     );
 
     res.json({ token });
-    
+    return;
   } catch (error) {
     console.error('Token refresh error:', error);
     res.status(500).json({ error: 'Failed to refresh token' });
+    return;
   }
 };

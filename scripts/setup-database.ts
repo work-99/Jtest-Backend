@@ -11,16 +11,28 @@ interface TableRow {
 }
 
 // Database configuration for Render.com
+// const dbConfig = {
+//   user: process.env.DB_USER || 'jtest_db_user',
+//   host: process.env.DB_HOST || 'dpg-d1kkh4je5dus73emq3o0-a.oregon-postgres.render.com',
+//   database: process.env.DB_NAME || 'jtest_db',
+//   password: process.env.DB_PASSWORD || '6nBRHGo5wSxNSDqkDPAFjpctqt6ZtpAA',
+//   port: Number(process.env.DB_PORT) || 5432,
+//   ssl: {
+//     rejectUnauthorized: false
+//   }
+// };
+
 const dbConfig = {
-  user: process.env.DB_USER || 'jtest_db_user',
-  host: process.env.DB_HOST || 'dpg-d1kkh4je5dus73emq3o0-a.oregon-postgres.render.com',
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'jtest_db',
-  password: process.env.DB_PASSWORD || '6nBRHGo5wSxNSDqkDPAFjpctqt6ZtpAA',
+  password: process.env.DB_PASSWORD || '1',
   port: Number(process.env.DB_PORT) || 5432,
   ssl: {
     rejectUnauthorized: false
   }
 };
+
 
 const pool = new Pool(dbConfig);
 

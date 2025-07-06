@@ -56,13 +56,15 @@ export async function searchContacts(userId: string, query: string) {
     filterGroups: [{ filters: [{ propertyName: 'email', operator: 'CONTAINS_TOKEN', value: query }] }],
     properties: ['firstname', 'lastname', 'email', 'phone'],
     limit: 5,
+    sorts: [],
+    after: 0,
   });
   return result.results;
 }
 
 export async function createContact(userId: string, contactDetails: { email: string; firstname?: string; lastname?: string; phone?: string; }) {
   const client = await getHubspotClient(userId);
-  return await client.crm.contacts.basicApi.create({ properties: contactDetails });
+  return await client.crm.contacts.basicApi.create({ properties: contactDetails, associations: [] });
 }
 
 export async function addContactNote(userId: string, contactId: string, note: string) {

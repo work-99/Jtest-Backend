@@ -3,8 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from 'dotenv';
-import errorHandler from './middleware/error.middleware';
-import routes from './routes';
+import errorHandler from './src/middleware/error.middleware';
+import routes from './src/routes';
 
 config(); // Load .env variables
 
