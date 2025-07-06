@@ -132,7 +132,7 @@ const handleCreateHubspotContact = async (task: Task) => {
       message: `Contact created successfully for ${name}`
     };
   } catch (error) {
-    throw new Error(`Failed to create HubSpot contact: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to create HubSpot contact: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -153,7 +153,7 @@ const handleSendFollowUpEmail = async (task: Task) => {
       message: `Follow-up email sent successfully to ${to}`
     };
   } catch (error) {
-    throw new Error(`Failed to send follow-up email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to send follow-up email: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -181,7 +181,7 @@ const handleProcessNewEmail = async (task: Task) => {
       message: `Email processed successfully`
     };
   } catch (error) {
-    throw new Error(`Failed to process email: ${error.message}`);
+    throw new Error(`Failed to process email: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -224,7 +224,7 @@ export const triggerProactiveAgent = async (userId: number, triggerType: string,
     };
   } catch (error) {
     console.error('Proactive agent error:', error);
-    throw new Error(`Failed to trigger proactive agent: ${error.message}`);
+    throw new Error(`Failed to trigger proactive agent: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -276,15 +276,12 @@ const checkTaskContinuationConditions = async (task: Task): Promise<boolean> => 
 // Enhanced task management functions
 export const getTasksByUserId = async (userId: number, status?: string): Promise<Task[]> => {
   let query = 'SELECT * FROM tasks WHERE user_id = $1';
-  const params = [userId];
-  
+  const params: any[] = [userId];
   if (status) {
     query += ' AND status = $2';
     params.push(status);
   }
-  
   query += ' ORDER BY created_at DESC';
-  
   const result = await pool.query(query, params);
   return result.rows;
 };

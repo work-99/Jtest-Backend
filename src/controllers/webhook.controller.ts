@@ -14,14 +14,16 @@ export class WebhookController {
       // Verify the webhook is from Google
       const authHeader = headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
       }
 
       // Extract user ID from the webhook data
       const { historyId, emailAddress } = body;
       
       if (!historyId || !emailAddress) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
       }
 
       // Get user ID from email address
@@ -31,7 +33,8 @@ export class WebhookController {
       );
 
       if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
+        res.status(404).json({ error: 'User not found' });
+        return;
       }
 
       const userId = userResult.rows[0].user_id;
@@ -84,14 +87,16 @@ export class WebhookController {
       // Verify HubSpot webhook signature
       const signature = headers['x-hubspot-signature'];
       if (!signature) {
-        return res.status(401).json({ error: 'Missing signature' });
+        res.status(401).json({ error: 'Missing signature' });
+        return;
       }
 
       // Extract subscription type and contact data
       const { subscriptionType, contactId, propertyName, propertyValue } = body;
       
       if (!subscriptionType || !contactId) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
       }
 
       // Get user ID from HubSpot credentials
@@ -101,7 +106,8 @@ export class WebhookController {
       );
 
       if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'No HubSpot users found' });
+        res.status(404).json({ error: 'No HubSpot users found' });
+        return;
       }
 
       const userId = userResult.rows[0].user_id;
@@ -214,13 +220,15 @@ export class WebhookController {
       // Verify the webhook is from Google Calendar
       const authHeader = headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
       }
 
       const { resourceId, resourceUri, token } = body;
       
       if (!resourceId || !resourceUri) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
       }
 
       // Get user ID from resource URI
@@ -230,7 +238,8 @@ export class WebhookController {
       );
 
       if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
+        res.status(404).json({ error: 'User not found' });
+        return;
       }
 
       const userId = userResult.rows[0].user_id;
@@ -264,7 +273,8 @@ export class WebhookController {
       const userId = (req as any).user?.id;
       
       if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
       }
 
       // Get webhook processing statistics

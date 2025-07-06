@@ -4,8 +4,12 @@ import pool from '../config/db';
 import { GmailService } from './gmail.service';
 import { searchContacts } from './hubspot.service';
 
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY
+// });
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: "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"
 });
 
 interface EmbeddingResult {
@@ -19,9 +23,17 @@ export class RAGService {
   // Generate embeddings for text content
   static async generateEmbedding(text: string): Promise<number[]> {
     try {
+      // Validate input
+      if (!text || typeof text !== 'string' || text.trim().length === 0) {
+        console.error('Invalid text for embedding:', text);
+        throw new Error('Invalid text input for embedding');
+      }
+      
+      console.log('Generating embedding for text:', text.substring(0, 100) + '...');
+      
       const response = await openai.embeddings.create({
         model: 'text-embedding-3-small',
-        input: text
+        input: text.trim()
       });
       
       return response.data[0].embedding;
@@ -201,13 +213,13 @@ export class RAGService {
       const contacts = await searchContacts(userId.toString(), '');
       
       for (const contact of contacts) {
-        const content = `Name: ${contact.firstname} ${contact.lastname}\nEmail: ${contact.email}\nPhone: ${contact.phone || 'N/A'}\nCompany: ${contact.company || 'N/A'}`;
+        const content = `Name: ${contact.properties?.firstname || ''} ${contact.properties?.lastname || ''}\nEmail: ${contact.properties?.email || 'N/A'}\nPhone: ${contact.properties?.phone || 'N/A'}\nCompany: ${contact.properties?.company || 'N/A'}`;
         const metadata = {
           source: 'contact',
           contactId: contact.id,
-          email: contact.email,
-          name: `${contact.firstname} ${contact.lastname}`,
-          company: contact.company
+          email: contact.properties?.email,
+          name: `${contact.properties?.firstname || ''} ${contact.properties?.lastname || ''}`,
+          company: contact.properties?.company
         };
         
         // Check if already indexed

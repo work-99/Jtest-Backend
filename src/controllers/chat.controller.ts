@@ -6,22 +6,29 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const sendMessage = async (req: Request, res: Response) => {
   try {
+    console.log('sendMessage called with body:', req.body);
+    
     const userId = req.user?.id;
     if (!userId) {
+      console.log('No user ID found');
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
     // At this point, userId is guaranteed to be a number
     const userIdNumber = userId as number;
+    console.log('User ID:', userIdNumber);
 
     const { message, sessionId } = req.body;
     const finalSessionId = sessionId || uuidv4();
+    console.log('Message:', message, 'Session ID:', finalSessionId);
     
     if (!message || typeof message !== 'string') {
+      console.log('Invalid message format');
       res.status(400).json({ error: 'Message is required' });
       return;
     }
 
+    console.log('Saving user message to conversation...');
     // Save user message to conversation
     await MessageModel.addMessageToConversation(userIdNumber, finalSessionId, {
       user_id: userIdNumber,
@@ -29,10 +36,14 @@ export const sendMessage = async (req: Request, res: Response) => {
       role: 'user',
       content: message
     });
+    console.log('User message saved');
 
+    console.log('Processing message with AI...');
     // Process message with AI
     const aiResponse = await processMessage(userIdNumber.toString(), message);
+    console.log('AI response received:', aiResponse);
 
+    console.log('Saving AI response to conversation...');
     // Save AI response to conversation
     await MessageModel.addMessageToConversation(userIdNumber, finalSessionId, {
       user_id: userIdNumber,
@@ -44,9 +55,11 @@ export const sendMessage = async (req: Request, res: Response) => {
         toolCalls: 'toolCalls' in aiResponse ? aiResponse.toolCalls : undefined
       }
     });
+    console.log('AI response saved');
 
     // If action is required, create a task
     if ('actionRequired' in aiResponse && aiResponse.actionRequired) {
+      console.log('Creating task for action...');
       await TaskModel.create({
         user_id: userIdNumber,
         type: 'ai_action',
@@ -57,8 +70,10 @@ export const sendMessage = async (req: Request, res: Response) => {
           timestamp: new Date()
         }
       });
+      console.log('Task created');
     }
 
+    console.log('Sending response to client');
     res.json({
       text: aiResponse.text,
       actionRequired: 'actionRequired' in aiResponse ? aiResponse.actionRequired : false,
@@ -67,6 +82,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     return;
   } catch (error) {
     console.error('Send message error:', error);
+    console.error('Error stack:', (error as Error).stack);
     res.status(500).json({ error: 'Failed to process message' });
     return;
   }

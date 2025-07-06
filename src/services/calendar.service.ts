@@ -1,6 +1,6 @@
 // services/calendar.service.ts
 import { google } from 'googleapis';
-import { pool } from '../config/db';
+import pool from '../config/db';
 
 export const getCalendarClient = async (userId: string) => {
   const result = await pool.query(
@@ -65,4 +65,70 @@ export const getAvailableSlots = async (
   const busySlots = data.calendars?.primary.busy || [];
   // Implement logic to find available slots
   return findAvailableSlots(busySlots, timeMin, timeMax, duration);
+};
+
+// Helper function to find available time slots
+function findAvailableSlots(busySlots: any[], timeMin: string, timeMax: string, duration: number) {
+  // Simple implementation - return time slots when not busy
+  const slots = [];
+  const start = new Date(timeMin);
+  const end = new Date(timeMax);
+  
+  // For now, return some mock available slots
+  for (let i = 0; i < 5; i++) {
+    const slotStart = new Date(start.getTime() + i * 60 * 60 * 1000); // 1 hour intervals
+    const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
+    
+    if (slotEnd <= end) {
+      slots.push({
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString()
+      });
+    }
+  }
+  
+  return slots;
+}
+
+// Get upcoming calendar events
+export const getUpcomingEvents = async (userId: string, maxResults: number = 10) => {
+  try {
+    const calendar = await getCalendarClient(userId);
+    const now = new Date();
+    const timeMin = now.toISOString();
+    
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: timeMin,
+      maxResults: maxResults,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+
+    const events = response.data.items || [];
+    return events.map(event => ({
+      id: event.id,
+      summary: event.summary || 'No title',
+      description: event.description || '',
+      start: event.start?.dateTime || event.start?.date,
+      end: event.end?.dateTime || event.end?.date,
+      attendees: event.attendees || [],
+      location: event.location || '',
+      htmlLink: event.htmlLink
+    }));
+  } catch (error) {
+    console.error('Error fetching calendar events:', error);
+    throw new Error('Failed to fetch calendar events');
+  }
+};
+
+// Get next meeting/event
+export const getNextEvent = async (userId: string) => {
+  try {
+    const events = await getUpcomingEvents(userId, 1);
+    return events.length > 0 ? events[0] : null;
+  } catch (error) {
+    console.error('Error fetching next event:', error);
+    throw new Error('Failed to fetch next event');
+  }
 };

@@ -36,7 +36,7 @@ passport.use(
         'profile',
         'email',
         'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
       ],
     },
     async (req, accessToken, refreshToken, profile, done) => {
@@ -194,7 +194,7 @@ export const authenticateGoogle = passport.authenticate('google', {
     'profile',
     'email',
     'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',
   ],
 });
 

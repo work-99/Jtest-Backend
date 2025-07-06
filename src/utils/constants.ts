@@ -13,6 +13,10 @@ export const DB_CONFIG = {
   database: process.env.DB_NAME || 'jtest_db',
   user: process.env.DB_USER || 'jtest_db_user',
   password: process.env.DB_PASSWORD || '6nBRHGo5wSxNSDqkDPAFjpctqt6ZtpAA',
+  ssl: {
+    rejectUnauthorized: false,
+    mode: 'prefer'
+  }
 };
 
 // JWT constants

@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, gmail_v1 } from 'googleapis';
 import pool from '../config/db';
 import { RAGService } from './rag.service';
 
@@ -51,45 +51,45 @@ export class GmailService {
   static async listEmails(userId: number, maxResults: number = 50, query?: string): Promise<EmailMessage[]> {
     try {
       const gmail = await this.getGmailClient(userId);
-      
-      const params: any = {
+      const response = await gmail.users.messages.list({
         userId: 'me',
         maxResults,
-        format: 'full'
-      };
-
-      if (query) {
-        params.q = query;
-      }
-
-      const response = await gmail.users.messages.list(params);
-      const messages = response.data.messages || [];
-
-      const emailPromises = messages.map(async (message) => {
-        const email = await gmail.users.messages.get({
-          userId: 'me',
-          id: message.id!
-        });
-
-        return this.parseEmailMessage(email.data);
+        ...(query ? { q: query } : {})
       });
-
-      const emails = await Promise.all(emailPromises);
-
-      // Store embeddings for RAG
-      for (const email of emails) {
-        await RAGService.storeEmailEmbedding(
-          userId,
-          email.id,
-          email.subject,
-          email.body,
-          email.from,
-          email.to,
-          email.threadId
-        );
-      }
-
-      return emails;
+      const messages = (response.data.messages || []).filter((msg: gmail_v1.Schema$Message) => typeof msg.id === 'string') as { id: string }[];
+      const emailPromises = messages.map(async (message: { id: string }) => {
+        const emailResponse = await gmail.users.messages.get({
+          userId: 'me',
+          id: message.id,
+          format: 'full'
+        });
+        const email = this.parseEmailMessage(emailResponse.data);
+        
+        // Truncate email content to avoid token limit issues
+        const truncatedBody = email.body.length > 2000 ? email.body.substring(0, 2000) + '...' : email.body;
+        const emailContent = `From: ${email.from}\nSubject: ${email.subject}\nBody: ${truncatedBody}`;
+        
+        try {
+          await RAGService.storeEmbedding(
+            userId,
+            emailContent,
+            {
+              source: 'email',
+              emailId: email.id,
+              from: email.from,
+              subject: email.subject,
+              date: email.date
+            },
+            'email'
+          );
+        } catch (embeddingError) {
+          console.warn('Failed to store embedding for email:', email.id, embeddingError);
+          // Continue without storing embedding
+        }
+        
+        return email;
+      });
+      return await Promise.all(emailPromises);
     } catch (error) {
       console.error('Error listing emails:', error);
       throw new Error('Failed to list emails');
@@ -99,26 +99,25 @@ export class GmailService {
   static async getEmail(userId: number, emailId: string): Promise<EmailMessage> {
     try {
       const gmail = await this.getGmailClient(userId);
-      
       const response = await gmail.users.messages.get({
         userId: 'me',
         id: emailId,
         format: 'full'
       });
-
       const email = this.parseEmailMessage(response.data);
-
       // Store embedding for RAG
-      await RAGService.storeEmailEmbedding(
+      await RAGService.storeEmbedding(
         userId,
-        email.id,
-        email.subject,
-        email.body,
-        email.from,
-        email.to,
-        email.threadId
+        `From: ${email.from}\nSubject: ${email.subject}\nBody: ${email.body}`,
+        {
+          source: 'email',
+          emailId: email.id,
+          from: email.from,
+          subject: email.subject,
+          date: email.date
+        },
+        'email'
       );
-
       return email;
     } catch (error) {
       console.error('Error getting email:', error);
@@ -188,8 +187,7 @@ export class GmailService {
       const response = await gmail.users.messages.list({
         userId: 'me',
         q: query,
-        maxResults,
-        format: 'full'
+        maxResults
       });
 
       const messages = response.data.messages || [];

@@ -22,7 +22,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 export const googleAuth = async (req: Request, res: Response): Promise<void> => {
   try {
     const authUrl = getGoogleAuthUrl();
-    res.json({ authUrl });
+    res.json({ url: authUrl });
   } catch (error) {
     console.error('Google auth error:', error);
     res.status(500).json({ error: 'Failed to generate auth URL' });
@@ -31,28 +31,43 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
 
 export const googleCallback = async (req: Request, res: Response): Promise<void> => {
   try {
+    console.log('=== Google Callback Started ===');
     const { code } = req.query;
     
     if (!code || typeof code !== 'string') {
+      console.log('❌ No authorization code provided');
       res.status(400).json({ error: 'Authorization code required' });
       return;
     }
 
+    console.log('✅ Authorization code received:', code.substring(0, 20) + '...');
+
     // Get tokens from Google
+    console.log('🔄 Getting tokens from Google...');
     const tokens = await getGoogleTokens(code);
+    console.log('✅ Tokens received:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiryDate: tokens.expiry_date
+    });
     
     // Get user data from Google
+    console.log('🔄 Getting user data from Google...');
     const userData = await getUserData(tokens);
+    console.log('✅ User data received:', userData);
     
     if (!userData?.email) {
+      console.log('❌ No email in user data');
       res.status(400).json({ error: 'Failed to get user email from Google' });
       return;
     }
 
     // Check if user exists
+    console.log('🔄 Looking up user in database...');
     let user = await UserModel.findByEmail(userData.email);
     
     if (!user) {
+      console.log('🔄 Creating new user...');
       // Create new user
       const createUserData: CreateUserData = {
         email: userData.email,
@@ -63,12 +78,18 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       };
       
       user = await UserModel.create(createUserData);
+      console.log('✅ New user created:', user);
+    } else {
+      console.log('✅ Existing user found:', user);
     }
 
     // Save Google credentials
+    console.log('🔄 Saving Google credentials...');
     await saveGoogleCredentials(user.id.toString(), tokens);
+    console.log('✅ Credentials saved');
 
     // Generate JWT token
+    console.log('🔄 Generating JWT token...');
     const token = jwt.sign(
       { 
         userId: user.id, 
@@ -78,14 +99,18 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+    console.log('✅ JWT token generated');
 
     // Redirect to frontend with token
     const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?token=${token}`;
+    console.log('🔄 Redirecting to:', redirectUrl);
     res.redirect(redirectUrl);
     return;
-  } catch (error) {
-    console.error('Google callback error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+  } catch (error: any) {
+    console.error('❌ Google callback error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Authentication failed', details: error.message });
     return;
   }
 };
@@ -93,7 +118,7 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
 export const hubspotAuth = async (req: Request, res: Response): Promise<void> => {
   try {
     const authUrl = getHubspotAuthUrl();
-    res.json({ authUrl });
+    res.json({ url: authUrl });
   } catch (error) {
     console.error('HubSpot auth error:', error);
     res.status(500).json({ error: 'Failed to generate auth URL' });
@@ -136,6 +161,21 @@ export const checkAuthStatus = async (req: Request, res: Response): Promise<void
     
     if (!userId) {
       res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Handle mock user for testing
+    if (userId === 1 && req.user?.email === 'test@example.com') {
+      res.json({
+        user: {
+          id: 1,
+          email: 'test@example.com',
+          name: 'Test User',
+          avatar: undefined,
+          role: 'user'
+        },
+        connectedServices: []
+      });
       return;
     }
 
