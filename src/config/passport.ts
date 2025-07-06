@@ -1,8 +1,8 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
-import { OAuth2Strategy as HubspotStrategy } from 'passport-oauth2';
-import { pool } from './db';
+import OAuth2Strategy from 'passport-oauth2';
+import pool from './db';
 import jwt from 'jsonwebtoken';
 import { config } from 'dotenv';
 
@@ -112,14 +112,16 @@ passport.use(
 // Passport HubSpot OAuth Strategy
 passport.use(
   'hubspot',
-  new HubspotStrategy(
+  new OAuth2Strategy(
     {
       clientID: process.env.HUBSPOT_CLIENT_ID!,
       clientSecret: process.env.HUBSPOT_CLIENT_SECRET!,
       callbackURL: process.env.HUBSPOT_CALLBACK_URL!,
+      authorizationURL: 'https://app.hubspot.com/oauth/authorize',
+      tokenURL: 'https://api.hubapi.com/oauth/v1/token',
       scope: ['contacts', 'timeline', 'automation'],
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (accessToken: string, refreshToken: string, profile: any, done: any) => {
       try {
         // Get user from request (set in auth middleware)
         const user = (profile as any).user;
@@ -146,7 +148,7 @@ passport.use(
 
 // Passport JWT Strategy
 passport.use(
-  new JwtStrategy(jwtOptions, async (payload, done) => {
+  new JwtStrategy(jwtOptions, async (payload: any, done: any) => {
     try {
       const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [
         payload.sub,

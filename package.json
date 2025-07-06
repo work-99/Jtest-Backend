@@ -32,6 +32,8 @@
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
     "@hubspot/api-client": "^9.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/passport-oauth2": "^1.8.0",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -48,6 +50,8 @@
     "openai": "^4.20.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "passport-jwt": "^4.0.1",
+    "passport-oauth2": "^1.8.0",
     "pg": "^8.16.3",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"

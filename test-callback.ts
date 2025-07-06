@@ -46,7 +46,7 @@ async function testCallback() {
     
     console.log('\n🎉 All callback steps completed successfully!');
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error in callback test:', error);
     console.error('Error details:', error.message);
     console.error('Stack trace:', error.stack);
