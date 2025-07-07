@@ -17,7 +17,13 @@ async function testAppointmentScheduling() {
     const result = await processMessage(testUserId, testMessage);
     
     console.log('\n--- Result ---');
-    console.log('Response:', result.text);
+    if (Array.isArray(result)) {
+      console.log('Tool call results:', result);
+    } else if ('text' in result) {
+      console.log('Response:', result.text);
+    } else {
+      console.log('Unknown result format:', result);
+    }
     
     // Check if result has actionRequired property
     if ('actionRequired' in result && result.actionRequired) {
