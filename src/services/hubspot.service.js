@@ -9,7 +9,6 @@ exports.saveHubspotCredentials = saveHubspotCredentials;
 exports.getHubspotClient = getHubspotClient;
 exports.searchContacts = searchContacts;
 exports.createContact = createContact;
-exports.addContactNote = addContactNote;
 // services/hubspot.service.ts
 const api_client_1 = __importDefault(require("@hubspot/api-client"));
 const db_1 = __importDefault(require("../config/db"));
@@ -17,13 +16,17 @@ const axios_1 = __importDefault(require("axios"));
 const HUBSPOT_CLIENT_ID = process.env.HUBSPOT_CLIENT_ID;
 const HUBSPOT_CLIENT_SECRET = process.env.HUBSPOT_CLIENT_SECRET;
 const HUBSPOT_REDIRECT_URI = process.env.HUBSPOT_REDIRECT_URI;
-function getHubspotAuthUrl() {
+function getHubspotAuthUrl(userId) {
     const params = new URLSearchParams({
         client_id: HUBSPOT_CLIENT_ID,
         redirect_uri: HUBSPOT_REDIRECT_URI,
-        scope: 'crm.objects.contacts.read crm.objects.contacts.write crm.objects.notes.read crm.objects.notes.write',
+        scope: 'crm.objects.contacts.read oauth',
         response_type: 'code',
     });
+    // Add state parameter with user ID if provided
+    if (userId) {
+        params.append('state', userId);
+    }
     return `https://app.hubspot.com/oauth/authorize?${params.toString()}`;
 }
 async function getHubspotTokens(code) {
@@ -65,14 +68,4 @@ async function searchContacts(userId, query) {
 async function createContact(userId, contactDetails) {
     const client = await getHubspotClient(userId);
     return await client.crm.contacts.basicApi.create({ properties: contactDetails, associations: [] });
-}
-async function addContactNote(userId, contactId, note) {
-    const client = await getHubspotClient(userId);
-    return await client.crm.objects.notes.basicApi.create({
-        properties: {
-            hs_note_body: note,
-            hs_timestamp: new Date().toISOString(),
-        },
-        associations: [{ to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 280 }] }],
-    });
 }

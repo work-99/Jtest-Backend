@@ -109,42 +109,42 @@ passport.use(
   )
 );
 
-// Passport HubSpot OAuth Strategy
-passport.use(
-  'hubspot',
-  new OAuth2Strategy(
-    {
-      clientID: process.env.HUBSPOT_CLIENT_ID!,
-      clientSecret: process.env.HUBSPOT_CLIENT_SECRET!,
-      callbackURL: process.env.HUBSPOT_CALLBACK_URL!,
-      authorizationURL: 'https://app.hubspot.com/oauth/authorize',
-      tokenURL: 'https://api.hubapi.com/oauth/v1/token',
-      scope: ['contacts', 'timeline', 'automation'],
-    },
-    async (accessToken: string, refreshToken: string, profile: any, done: any) => {
-      try {
-        // Get user from request (set in auth middleware)
-        const user = (profile as any).user;
+// Passport HubSpot OAuth Strategy - COMMENTED OUT (using custom routes instead)
+// passport.use(
+//   'hubspot',
+//   new OAuth2Strategy(
+//     {
+//       clientID: process.env.HUBSPOT_CLIENT_ID!,
+//       clientSecret: process.env.HUBSPOT_CLIENT_SECRET!,
+//       callbackURL: process.env.HUBSPOT_CALLBACK_URL!,
+//       authorizationURL: 'https://app.hubspot.com/oauth/authorize',
+//       tokenURL: 'https://api.hubapi.com/oauth/v1/token',
+//       scope: ['contacts', 'timeline', 'automation'],
+//     },
+//     async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+//       try {
+//         // Get user from request (set in auth middleware)
+//         const user = (profile as any).user;
 
-        // Store HubSpot tokens
-        await pool.query(
-          `INSERT INTO user_credentials 
-           (user_id, service, access_token, refresh_token) 
-           VALUES ($1, 'hubspot', $2, $3) 
-           ON CONFLICT (user_id, service) 
-           DO UPDATE SET 
-             access_token = EXCLUDED.access_token,
-             refresh_token = EXCLUDED.refresh_token`,
-          [user.id, accessToken, refreshToken]
-        );
+//         // Store HubSpot tokens
+//         await pool.query(
+//           `INSERT INTO user_credentials 
+//            (user_id, service, access_token, refresh_token) 
+//            VALUES ($1, 'hubspot', $2, $3) 
+//            ON CONFLICT (user_id, service) 
+//            DO UPDATE SET 
+//              access_token = EXCLUDED.access_token,
+//              refresh_token = EXCLUDED.refresh_token`,
+//           [user.id, accessToken, refreshToken]
+//         );
 
-        return done(null, { ...user, hubspotConnected: true });
-      } catch (error) {
-        return done(error as Error);
-      }
-    }
-  )
-);
+//         return done(null, { ...user, hubspotConnected: true });
+//       } catch (error) {
+//         return done(error as Error);
+//       }
+//     }
+//   )
+// );
 
 // Passport JWT Strategy
 passport.use(
@@ -200,9 +200,9 @@ export const authenticateGoogle = passport.authenticate('google', {
   ],
 });
 
-// Helper middleware for HubSpot auth
-export const authenticateHubspot = passport.authenticate('hubspot', {
-  session: false,
-});
+// Helper middleware for HubSpot auth - COMMENTED OUT (using custom routes instead)
+// export const authenticateHubspot = passport.authenticate('hubspot', {
+//   session: false,
+// });
 
 export default passport;

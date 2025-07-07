@@ -3,7 +3,6 @@ import {
   googleAuth, 
   googleCallback, 
   hubspotAuth, 
-  hubspotCallback, 
   checkAuthStatus, 
   logout, 
   refreshToken 
@@ -18,7 +17,13 @@ router.get('/google/callback', googleCallback);
 
 // HubSpot OAuth routes
 router.get('/hubspot', authenticateToken, hubspotAuth);
-router.get('/hubspot/callback', authenticateToken, hubspotCallback);
+
+// HubSpot redirect route for compatibility
+router.get('/hubspot/callback', authenticateToken, (req, res) => {
+  // Redirect to the new HubSpot callback endpoint
+  const redirectUrl = `/api/integrations/hubspot/callback${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
+  res.redirect(redirectUrl);
+});
 
 // Auth status and management
 router.get('/status', authenticateToken, checkAuthStatus);

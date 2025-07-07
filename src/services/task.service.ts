@@ -2,7 +2,7 @@
 import pool from '../config/db';
 import { processMessage } from './ai.service';
 import { GmailService } from './gmail.service';
-import { createContact, addContactNote } from './hubspot.service';
+import { createContact } from './hubspot.service';
 
 interface Task {
   id: number;
@@ -120,11 +120,6 @@ const handleCreateHubspotContact = async (task: Task) => {
       lastname: lastName,
       phone
     });
-
-    // Add note about source
-    if (source) {
-      await addContactNote(task.user_id.toString(), contact.id, `Contact created from ${source}`);
-    }
 
     return {
       success: true,

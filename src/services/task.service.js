@@ -83,10 +83,6 @@ const handleCreateHubspotContact = async (task) => {
             lastname: lastName,
             phone
         });
-        // Add note about source
-        if (source) {
-            await (0, hubspot_service_1.addContactNote)(task.user_id.toString(), contact.id, `Contact created from ${source}`);
-        }
         return {
             success: true,
             contactId: contact.id,

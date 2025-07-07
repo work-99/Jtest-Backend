@@ -3,11 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateHubspot = exports.authenticateGoogle = exports.authenticateJwt = void 0;
+exports.authenticateGoogle = exports.authenticateJwt = void 0;
 const passport_1 = __importDefault(require("passport"));
 const passport_google_oauth20_1 = require("passport-google-oauth20");
 const passport_jwt_1 = require("passport-jwt");
-const passport_oauth2_1 = __importDefault(require("passport-oauth2"));
 const db_1 = __importDefault(require("./db"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = require("dotenv");
@@ -81,32 +80,40 @@ passport_1.default.use(new passport_google_oauth20_1.Strategy({
         return done(error);
     }
 }));
-// Passport HubSpot OAuth Strategy
-passport_1.default.use('hubspot', new passport_oauth2_1.default({
-    clientID: process.env.HUBSPOT_CLIENT_ID,
-    clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
-    callbackURL: process.env.HUBSPOT_CALLBACK_URL,
-    authorizationURL: 'https://app.hubspot.com/oauth/authorize',
-    tokenURL: 'https://api.hubapi.com/oauth/v1/token',
-    scope: ['contacts', 'timeline', 'automation'],
-}, async (accessToken, refreshToken, profile, done) => {
-    try {
-        // Get user from request (set in auth middleware)
-        const user = profile.user;
-        // Store HubSpot tokens
-        await db_1.default.query(`INSERT INTO user_credentials 
-           (user_id, service, access_token, refresh_token) 
-           VALUES ($1, 'hubspot', $2, $3) 
-           ON CONFLICT (user_id, service) 
-           DO UPDATE SET 
-             access_token = EXCLUDED.access_token,
-             refresh_token = EXCLUDED.refresh_token`, [user.id, accessToken, refreshToken]);
-        return done(null, { ...user, hubspotConnected: true });
-    }
-    catch (error) {
-        return done(error);
-    }
-}));
+// Passport HubSpot OAuth Strategy - COMMENTED OUT (using custom routes instead)
+// passport.use(
+//   'hubspot',
+//   new OAuth2Strategy(
+//     {
+//       clientID: process.env.HUBSPOT_CLIENT_ID!,
+//       clientSecret: process.env.HUBSPOT_CLIENT_SECRET!,
+//       callbackURL: process.env.HUBSPOT_CALLBACK_URL!,
+//       authorizationURL: 'https://app.hubspot.com/oauth/authorize',
+//       tokenURL: 'https://api.hubapi.com/oauth/v1/token',
+//       scope: ['contacts', 'timeline', 'automation'],
+//     },
+//     async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+//       try {
+//         // Get user from request (set in auth middleware)
+//         const user = (profile as any).user;
+//         // Store HubSpot tokens
+//         await pool.query(
+//           `INSERT INTO user_credentials 
+//            (user_id, service, access_token, refresh_token) 
+//            VALUES ($1, 'hubspot', $2, $3) 
+//            ON CONFLICT (user_id, service) 
+//            DO UPDATE SET 
+//              access_token = EXCLUDED.access_token,
+//              refresh_token = EXCLUDED.refresh_token`,
+//           [user.id, accessToken, refreshToken]
+//         );
+//         return done(null, { ...user, hubspotConnected: true });
+//       } catch (error) {
+//         return done(error as Error);
+//       }
+//     }
+//   )
+// );
 // Passport JWT Strategy
 passport_1.default.use(new passport_jwt_1.Strategy(jwtOptions, async (payload, done) => {
     try {
@@ -153,8 +160,8 @@ exports.authenticateGoogle = passport_1.default.authenticate('google', {
         'https://www.googleapis.com/auth/gmail.modify',
     ],
 });
-// Helper middleware for HubSpot auth
-exports.authenticateHubspot = passport_1.default.authenticate('hubspot', {
-    session: false,
-});
+// Helper middleware for HubSpot auth - COMMENTED OUT (using custom routes instead)
+// export const authenticateHubspot = passport.authenticate('hubspot', {
+//   session: false,
+// });
 exports.default = passport_1.default;

@@ -10,6 +10,7 @@ const rag_service_1 = require("./rag.service");
 const message_model_1 = require("../modules/message.model");
 const gmail_service_1 = require("./gmail.service");
 const calendar_service_1 = require("./calendar.service");
+const hubspot_service_1 = require("./hubspot.service");
 // const openai = new OpenAI({
 //   apiKey: process.env.OPENAI_API_KEY
 // });
@@ -53,6 +54,15 @@ const tools = [
 const processMessage = async (userId, message) => {
     try {
         console.log('Processing message for user:', userId, 'Message:', message);
+        // Check if this is an appointment scheduling request
+        const isAppointmentRequest = message.toLowerCase().includes('schedule') &&
+            (message.toLowerCase().includes('appointment') ||
+                message.toLowerCase().includes('meeting')) &&
+            message.toLowerCase().includes('with');
+        if (isAppointmentRequest) {
+            console.log('Appointment scheduling request detected...');
+            return await handleAppointmentScheduling(userId, message);
+        }
         // Check if this is an email query first
         const isEmailQuery = message.toLowerCase().includes('email') ||
             message.toLowerCase().includes('mail') ||
@@ -66,6 +76,12 @@ const processMessage = async (userId, message) => {
             message.toLowerCase().includes('appointment') ||
             message.toLowerCase().includes('schedule') ||
             message.toLowerCase().includes('next');
+        // Check if this is a HubSpot/contact query
+        const isHubSpotQuery = message.toLowerCase().includes('contact') ||
+            message.toLowerCase().includes('client') ||
+            message.toLowerCase().includes('customer') ||
+            message.toLowerCase().includes('hubspot') ||
+            message.toLowerCase().includes('crm');
         if (isEmailQuery) {
             console.log('Email query detected, fetching emails directly...');
             try {
@@ -118,6 +134,34 @@ const processMessage = async (userId, message) => {
             catch (calendarError) {
                 console.error('Error fetching calendar events:', calendarError);
                 return { text: "I'm having trouble accessing your calendar right now. Please try again later." };
+            }
+        }
+        if (isHubSpotQuery) {
+            console.log('HubSpot query detected, fetching contacts...');
+            try {
+                const contacts = await (0, hubspot_service_1.searchContacts)(userId, '');
+                console.log(`Found ${contacts.length} contacts`);
+                if (contacts.length > 0) {
+                    let contactContent = 'Here are your HubSpot contacts:\n\n';
+                    contacts.forEach((contact, index) => {
+                        const firstName = contact.properties?.firstname || '';
+                        const lastName = contact.properties?.lastname || '';
+                        const email = contact.properties?.email || 'No email';
+                        const phone = contact.properties?.phone || 'No phone';
+                        contactContent += `${index + 1}. **Name**: ${firstName} ${lastName}\n`;
+                        contactContent += `   **Email**: ${email}\n`;
+                        contactContent += `   **Phone**: ${phone}\n`;
+                        contactContent += `   **ID**: ${contact.id}\n\n`;
+                    });
+                    return { text: contactContent };
+                }
+                else {
+                    return { text: "You don't have any contacts in your HubSpot CRM yet." };
+                }
+            }
+            catch (hubspotError) {
+                console.error('Error fetching HubSpot contacts:', hubspotError);
+                return { text: "I'm having trouble accessing your HubSpot contacts right now. Please make sure your HubSpot account is connected." };
             }
         }
         // Get relevant context from RAG
@@ -176,6 +220,148 @@ Please try again later or contact support if this issue persists.`
     }
 };
 exports.processMessage = processMessage;
+const handleAppointmentScheduling = async (userId, message) => {
+    try {
+        console.log('Handling appointment scheduling request...');
+        // Extract contact name from the message
+        const contactName = extractContactName(message);
+        if (!contactName) {
+            return { text: "I couldn't identify the contact name in your request. Please specify who you'd like to schedule an appointment with." };
+        }
+        console.log('Looking for contact:', contactName);
+        // Find the contact in HubSpot
+        const contacts = await (0, hubspot_service_1.searchContacts)(userId, contactName);
+        if (!contacts || contacts.length === 0) {
+            return { text: `I couldn't find a contact named "${contactName}" in your HubSpot CRM. Please make sure the contact exists or check the spelling.` };
+        }
+        const contact = contacts[0]; // Use the first match
+        const contactEmail = contact.properties?.email;
+        const firstName = contact.properties?.firstname || '';
+        const lastName = contact.properties?.lastname || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        if (!contactEmail) {
+            return { text: `I found the contact "${fullName}" but they don't have an email address in your CRM. Please add their email address first.` };
+        }
+        console.log('Found contact:', fullName, 'Email:', contactEmail);
+        // Get available calendar times for the next 7 days
+        const availableTimes = await getAvailableTimes(userId);
+        if (!availableTimes || availableTimes.length === 0) {
+            return { text: `I couldn't find any available times in your calendar for the next few days. Please check your calendar and try again.` };
+        }
+        console.log('Available times:', availableTimes);
+        // Send email with available times
+        const emailSubject = `Appointment Scheduling - Available Times`;
+        const emailBody = generateAppointmentEmail(fullName, availableTimes);
+        const emailResult = await gmail_service_1.GmailService.sendEmail(parseInt(userId), {
+            to: contactEmail,
+            subject: emailSubject,
+            body: emailBody
+        });
+        console.log('Email sent successfully:', emailResult);
+        return {
+            text: `Perfect! I've sent an email to ${fullName} (${contactEmail}) with your available appointment times for the next few days. They can choose a time that works best for them and reply to confirm the appointment.`,
+            actionRequired: true,
+            data: {
+                contactName: fullName,
+                contactEmail,
+                availableTimes,
+                emailSent: true
+            }
+        };
+    }
+    catch (error) {
+        console.error('Error handling appointment scheduling:', error);
+        return { text: "I encountered an error while trying to schedule the appointment. Please try again or contact support if the issue persists." };
+    }
+};
+const extractContactName = (message) => {
+    // Simple extraction - look for "with [Name]"
+    const withMatch = message.match(/with\s+([a-zA-Z\s]+)/i);
+    if (withMatch) {
+        return withMatch[1].trim();
+    }
+    // Look for "appointment with [Name]"
+    const appointmentMatch = message.match(/appointment\s+with\s+([a-zA-Z\s]+)/i);
+    if (appointmentMatch) {
+        return appointmentMatch[1].trim();
+    }
+    // Look for "meeting with [Name]"
+    const meetingMatch = message.match(/meeting\s+with\s+([a-zA-Z\s]+)/i);
+    if (meetingMatch) {
+        return meetingMatch[1].trim();
+    }
+    return null;
+};
+const getAvailableTimes = async (userId) => {
+    try {
+        // Get upcoming events for the next 7 days
+        const events = await (0, calendar_service_1.getUpcomingEvents)(userId, 50); // Get more events to analyze
+        // Create time slots for the next 7 days (9 AM to 5 PM)
+        const availableSlots = [];
+        const now = new Date();
+        for (let day = 0; day < 7; day++) {
+            const currentDate = new Date(now);
+            currentDate.setDate(currentDate.getDate() + day);
+            currentDate.setHours(9, 0, 0, 0); // Start at 9 AM
+            // Skip weekends
+            if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+                continue;
+            }
+            // Create hourly slots from 9 AM to 5 PM
+            for (let hour = 9; hour < 17; hour++) {
+                const slotStart = new Date(currentDate);
+                slotStart.setHours(hour, 0, 0, 0);
+                const slotEnd = new Date(slotStart);
+                slotEnd.setHours(hour + 1, 0, 0, 0);
+                // Check if this slot conflicts with any existing events
+                const hasConflict = events.some(event => {
+                    if (!event.start || !event.end)
+                        return false;
+                    const eventStart = new Date(event.start);
+                    const eventEnd = new Date(event.end);
+                    return (slotStart < eventEnd && slotEnd > eventStart);
+                });
+                if (!hasConflict && slotStart > now) {
+                    const formattedTime = slotStart.toLocaleString('en-US', {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                    availableSlots.push(formattedTime);
+                }
+            }
+        }
+        // Return first 10 available slots
+        return availableSlots.slice(0, 10);
+    }
+    catch (error) {
+        console.error('Error getting available times:', error);
+        return [];
+    }
+};
+const generateAppointmentEmail = (contactName, availableTimes) => {
+    const timeSlots = availableTimes.map((time, index) => `${index + 1}. ${time}`).join('\n');
+    return `Dear ${contactName},
+
+I hope this email finds you well. I'm reaching out to schedule an appointment with you.
+
+Here are my available times for the next few days:
+
+${timeSlots}
+
+Please let me know which time works best for you, or if you'd prefer a different time. You can simply reply to this email with your preference.
+
+If you have any specific topics you'd like to discuss during our meeting, please feel free to include them in your response.
+
+I look forward to hearing from you.
+
+Best regards,
+Aki Sato
+Financial Advisor`;
+};
 const handleToolCalls = async (userId, toolCalls, aiMessage) => {
     const toolResponses = [];
     for (const toolCall of toolCalls) {

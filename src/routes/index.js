@@ -8,6 +8,8 @@ const auth_routes_1 = __importDefault(require("./auth.routes"));
 const chat_routes_1 = __importDefault(require("./chat.routes"));
 const instructions_routes_1 = __importDefault(require("./instructions.routes"));
 const webhook_routes_1 = __importDefault(require("./webhook.routes"));
+const hubspot_routes_1 = __importDefault(require("./hubspot.routes"));
+const tasks_routes_1 = __importDefault(require("./tasks.routes"));
 const router = (0, express_1.Router)();
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -22,4 +24,6 @@ router.use('/auth', auth_routes_1.default);
 router.use('/chat', chat_routes_1.default);
 router.use('/instructions', instructions_routes_1.default);
 router.use('/webhooks', webhook_routes_1.default);
+router.use('/integrations/hubspot', hubspot_routes_1.default);
+router.use('/tasks', tasks_routes_1.default);
 exports.default = router;
