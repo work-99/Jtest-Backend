@@ -6,6 +6,16 @@ import { MessageModel } from '../modules/message.model';
 import { GmailService } from './gmail.service';
 import { getUpcomingEvents, getNextEvent } from './calendar.service';
 import { searchContacts } from './hubspot.service';
+import { distance } from 'fastest-levenshtein';
+import type {
+  ChatCompletionUserMessageParam,
+  ChatCompletionSystemMessageParam,
+  ChatCompletionMessageParam
+} from 'openai/resources/chat/completions';
+
+const hubspotService = require('./hubspot.service');
+console.log('[AI] hubspotService module (top-level):', hubspotService);
+console.log('[AI] hubspotService.createContact (top-level):', typeof hubspotService.createContact);
 
 // const openai = new OpenAI({
 //   apiKey: process.env.OPENAI_API_KEY
@@ -45,6 +55,23 @@ const tools = [
           }
         },
         required: ['contact_name']
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'create_hubspot_contact',
+      description: 'Create a new contact in HubSpot with a note about the email',
+      parameters: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', description: 'Email address of the contact' },
+          name: { type: 'string', description: 'Full name of the contact' },
+          note: { type: 'string', description: 'A note about the email or context' },
+          phone: { type: 'string', description: 'Phone number of the contact', nullable: true }
+        },
+        required: ['email', 'name', 'note']
       }
     }
   }
@@ -169,6 +196,10 @@ export const processMessage = async (userId: string, message: string) => {
         }
       } catch (hubspotError) {
         console.error('Error fetching HubSpot contacts:', hubspotError);
+        if (hubspotError instanceof Error) {
+          console.error('HubSpot error stack:', hubspotError.stack);
+        }
+        console.error('UserId for HubSpot error:', userId);
         return { text: "I'm having trouble accessing your HubSpot contacts right now. Please make sure your HubSpot account is connected." };
       }
     }
@@ -194,10 +225,10 @@ export const processMessage = async (userId: string, message: string) => {
     3. Be helpful, professional, and accurate
     4. If you don't have enough information, ask for clarification`;
     
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
       ...recentMessages.map(msg => ({ role: msg.role, content: msg.content })),
-      { role: 'user' as const, content: message }
+      { role: 'user', content: message } as ChatCompletionUserMessageParam
     ];
 
     console.log('Calling OpenAI API...');
@@ -252,11 +283,35 @@ const handleAppointmentScheduling = async (userId: string, message: string) => {
     
     // Find the contact in HubSpot
     const contacts = await searchContacts(userId, contactName);
-    if (!contacts || contacts.length === 0) {
+    const normalizedQuery = contactName.trim().toLowerCase();
+    const queryTokens = new Set(normalizedQuery.split(/\s+/));
+    const matchedContact = contacts.find(contact => {
+      const first = (contact.properties?.firstname || '').toLowerCase();
+      const last = (contact.properties?.lastname || '').toLowerCase();
+      const full = `${first} ${last}`.trim();
+      const fullTokens = new Set(full.split(/\s+/));
+      // Token set overlap
+      const tokenOverlap = [...queryTokens].some(token => fullTokens.has(token));
+      // Fuzzy match (allowing up to 2 character differences)
+      const fuzzy =
+        distance(full, normalizedQuery) <= 2 ||
+        distance(first, normalizedQuery) <= 2 ||
+        distance(last, normalizedQuery) <= 2;
+      return (
+        full === normalizedQuery ||
+        first === normalizedQuery ||
+        last === normalizedQuery ||
+        full.includes(normalizedQuery) ||
+        first.includes(normalizedQuery) ||
+        last.includes(normalizedQuery) ||
+        tokenOverlap ||
+        fuzzy
+      );
+    });
+    if (!matchedContact) {
       return { text: `I couldn't find a contact named "${contactName}" in your HubSpot CRM. Please make sure the contact exists or check the spelling.` };
     }
-    
-    const contact = contacts[0]; // Use the first match
+    const contact = matchedContact;
     const contactEmail = contact.properties?.email;
     const firstName = contact.properties?.firstname || '';
     const lastName = contact.properties?.lastname || '';
@@ -404,24 +459,58 @@ If you have any specific topics you'd like to discuss during our meeting, please
 I look forward to hearing from you.
 
 Best regards,
-Aki Sato
 Financial Advisor`;
 };
 
 const handleToolCalls = async (userId: string, toolCalls: any, aiMessage: any) => {
   const toolResponses = [];
-  
   for (const toolCall of toolCalls) {
     const { name, arguments: args } = toolCall.function;
+    console.log('[AI] handleToolCalls called:', name, args);
     let result;
-    
     try {
       switch (name) {
         case 'search_emails_and_contacts':
-          result = await searchData(userId, args.query);
+          if (!args || typeof args.query !== 'string') {
+            result = { error: 'Missing or invalid query argument for search_emails_and_contacts' };
+          } else {
+            result = await searchData(userId, args.query);
+          }
           break;
         case 'schedule_appointment':
-          result = await scheduleAppointment(userId, args.contact_name, args.preferred_times);
+          if (!args || typeof args.contact_name !== 'string') {
+            result = { error: 'Missing or invalid contact_name argument for schedule_appointment' };
+          } else {
+            result = await scheduleAppointment(userId, args.contact_name, args.preferred_times);
+          }
+          break;
+        case 'create_hubspot_contact':
+          console.log('[AI] About to call createContact:', args);
+          const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args;
+          console.log('parsedArgs:', parsedArgs);
+
+          if (!args || typeof parsedArgs.email !== 'string' || typeof parsedArgs.name !== 'string' || typeof parsedArgs.note !== 'string') {
+            result = { error: 'Missing or invalid arguments for create_hubspot_contact' };
+          } else 
+          {
+            console.log('worksworks', parsedArgs.name, parsedArgs.email);
+            const [firstname, ...lastParts] = (parsedArgs.name || '').split(' ');
+            const lastname = lastParts.join(' ');
+            console.log('firstname:', firstname);
+            console.log('lastname:', lastname);
+            try {
+              result = await hubspotService.createContact(userId, {
+                email: parsedArgs.email,
+                firstname,
+                lastname,
+                phone: parsedArgs.phone || undefined
+              });
+              console.log('[AI] createContact result:', result);
+            } catch (err) {
+              console.error('[AI] createContact threw error:', err);
+              throw err;
+            }
+          }
           break;
         default:
           result = { error: `Unknown tool: ${name}` };
@@ -430,70 +519,13 @@ const handleToolCalls = async (userId: string, toolCalls: any, aiMessage: any) =
       console.error(`Error executing tool ${name}:`, error);
       result = { error: `Failed to execute ${name}: ${error.message}` };
     }
-    
     toolResponses.push({
       tool_call_id: toolCall.id,
-      role: 'function' as const,
-      name,
+      role: 'tool' as const,
       content: JSON.stringify(result)
     });
   }
-
-  try {
-    console.log('Tool responses:', toolResponses.map(r => ({ id: r.tool_call_id, name: r.name })));
-    
-    // Create the messages array properly
-    const messages = [
-      { role: 'assistant' as const, content: aiMessage.content, tool_calls: toolCalls },
-      ...toolResponses
-    ];
-    
-    console.log('Sending messages to OpenAI:', messages.length);
-    
-    // Send tool responses back to OpenAI
-    const secondResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: messages
-    });
-
-    return { 
-      text: secondResponse.choices[0].message.content,
-      actionRequired: toolResponses.some(r => r.name === 'schedule_appointment'),
-      toolCalls: toolCalls
-    };
-  } catch (error: any) {
-    console.error('Error in second OpenAI call:', error);
-    console.error('Error details:', error.message);
-    
-    // If the error is about tool calls, try a simpler approach
-    if (error.message && error.message.includes('tool_calls')) {
-      console.log('Attempting fallback without tool calls...');
-      try {
-        const fallbackResponse = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: 'You are a helpful financial advisor assistant. Provide a simple, helpful response.' },
-            { role: 'user', content: 'The user asked about their data. Please provide a helpful response based on what you know.' }
-          ]
-        });
-        
-        return {
-          text: fallbackResponse.choices[0].message.content,
-          actionRequired: false,
-          toolCalls: []
-        };
-      } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
-      }
-    }
-    
-    // Final fallback response
-    return {
-      text: "I found some information but encountered an issue processing it. Let me provide a simple response based on what I found.",
-      actionRequired: false,
-      toolCalls: []
-    };
-  }
+  return toolResponses;
 };
 
 const searchData = async (userId: string, query: string) => {
@@ -575,3 +607,63 @@ const scheduleAppointment = async (userId: string, contactName: string, preferre
     return { success: false, error: 'Failed to schedule appointment' };
   }
 };
+
+export async function processProactiveEvent(
+  userId: string,
+  eventType: string,
+  eventData: any,
+  instructions: string[]
+): Promise<{ text: string | null; actionRequired: boolean; toolCalls: any[] }> {
+  const prompt = `
+You are a proactive assistant for a financial advisor.
+
+Event:
+${JSON.stringify(eventData, null, 2)}
+
+Ongoing Instructions:
+${instructions.map(i => `- ${i}`).join('\n')}
+
+If the sender of the email is not found in HubSpot, use the create_hubspot_contact tool to add them as a new contact, including a note about the email. Always use the available tools to take action, not just to search.
+`;
+
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: 'You are a proactive assistant for a financial advisor.' },
+    { role: 'user', content: prompt }
+  ];
+
+  let toolCalls: any[] = [];
+  let toolResponses: any[] = [];
+  let openaiResponse: any = undefined;
+  let loopCount = 0;
+  const maxLoops = 5;
+
+  while (loopCount++ < maxLoops) {
+    openaiResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      tools,
+      tool_choice: 'auto',
+    });
+    const aiMessage = openaiResponse.choices[0].message;
+    messages.push(aiMessage);
+    toolCalls = aiMessage.tool_calls || [];
+    if (!toolCalls.length) break;
+    toolResponses = await handleToolCalls(userId, toolCalls, aiMessage);
+    for (const toolResponse of toolResponses) {
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolResponse.tool_call_id,
+        content: toolResponse.content,
+      });
+    }
+  }
+
+  // Return the final AI message
+  return {
+    text: openaiResponse && openaiResponse.choices[0].message.content,
+    actionRequired: false,
+    toolCalls: Array.isArray(toolCalls) ? toolCalls : [],
+  };
+}
+
+console.log('Polling script started...');

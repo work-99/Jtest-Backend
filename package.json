@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
-    "@hubspot/api-client": "^9.0.0",
+    "@google-cloud/pubsub": "^5.1.0",
+    "@hubspot/api-client": "^9.1.1",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-oauth2": "^1.8.0",
     "axios": "^1.6.2",
@@ -41,6 +42,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
+    "fastest-levenshtein": "^1.0.16",
     "googleapis": "^128.0.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",

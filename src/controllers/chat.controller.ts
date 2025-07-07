@@ -5,20 +5,22 @@ import { TaskModel } from '../modules/task.model';
 import { v4 as uuidv4 } from 'uuid';
 
 export const sendMessage = async (req: Request, res: Response) => {
+  const userIdNumber = req.user?.id;
+  const message = req.body.message;
+  console.log('Received chat message:', { userId: userIdNumber, message });
+
   try {
     console.log('sendMessage called with body:', req.body);
     
-    const userId = req.user?.id;
-    if (!userId) {
+    if (!userIdNumber) {
       console.log('No user ID found');
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
     // At this point, userId is guaranteed to be a number
-    const userIdNumber = userId as number;
     console.log('User ID:', userIdNumber);
 
-    const { message, sessionId } = req.body;
+    const { sessionId } = req.body;
     const finalSessionId = sessionId || uuidv4();
     console.log('Message:', message, 'Session ID:', finalSessionId);
     
@@ -45,11 +47,12 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     console.log('Saving AI response to conversation...');
     // Save AI response to conversation
+    const text = Array.isArray(aiResponse) ? JSON.stringify(aiResponse) : aiResponse.text || 'No response generated';
     await MessageModel.addMessageToConversation(userIdNumber, finalSessionId, {
       user_id: userIdNumber,
       session_id: finalSessionId,
       role: 'assistant',
-      content: aiResponse.text || 'No response generated',
+      content: text,
       metadata: {
         actionRequired: 'actionRequired' in aiResponse ? aiResponse.actionRequired : false,
         toolCalls: 'toolCalls' in aiResponse ? aiResponse.toolCalls : undefined
@@ -75,7 +78,7 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     console.log('Sending response to client');
     res.json({
-      text: aiResponse.text,
+      text,
       actionRequired: 'actionRequired' in aiResponse ? aiResponse.actionRequired : false,
       sessionId: finalSessionId
     });

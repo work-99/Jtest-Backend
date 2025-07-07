@@ -60,7 +60,18 @@ export const processPendingTasks = async () => {
           result = await handleProcessNewEmail(task);
           break;
         case 'ai_processing':
-          result = await processMessage(task.user_id.toString(), task.data.message);
+          // Use the new proactive event processor
+          const { triggerType, instruction, data } = task.data;
+          result = await require('./ai.service').processProactiveEvent(
+            task.user_id.toString(),
+            triggerType,
+            data,
+            [instruction]
+          );
+          // Defensive: if result is an array, wrap in object
+          if (Array.isArray(result)) {
+            result = { text: JSON.stringify(result), actionRequired: false, toolCalls: [] };
+          }
           break;
         default:
           result = { error: `Unknown task type: ${task.type}` };
@@ -168,11 +179,12 @@ const handleProcessNewEmail = async (task: Task) => {
     Please process this email according to the instructions.`;
     
     const result = await processMessage(task.user_id.toString(), message);
-    
+    // Defensive: if result is an array, wrap in object
+    const safeResult = Array.isArray(result) ? { text: JSON.stringify(result) } : result;
     return {
       success: true,
       processed: true,
-      aiResponse: result.text,
+      aiResponse: safeResult.text,
       message: `Email processed successfully`
     };
   } catch (error) {

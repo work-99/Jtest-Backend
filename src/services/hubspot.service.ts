@@ -1,5 +1,5 @@
 // services/hubspot.service.ts
-import hubspot from '@hubspot/api-client';
+import { Client } from '@hubspot/api-client';
 import pool from '../config/db';
 import axios from 'axios';
 
@@ -48,27 +48,117 @@ export async function saveHubspotCredentials(userId: string, tokens: any) {
 }
 
 export async function getHubspotClient(userId: string) {
+  // const result = await pool.query(
+  //   'SELECT access_token FROM user_credentials WHERE user_id = $1 AND service = $2',
+  //   [userId, 'hubspot']
+  // );
   const result = await pool.query(
-    'SELECT access_token FROM user_credentials WHERE user_id = $1 AND service = $2',
-    [userId, 'hubspot']
+    'SELECT access_token FROM user_credentials WHERE service = $1',
+    ['hubspot']
   );
   if (!result.rows.length) throw new Error('HubSpot credentials not found');
-  return new hubspot.Client({ accessToken: result.rows[0].access_token });
+  return new Client({ accessToken: result.rows[0].access_token });
 }
 
 export async function searchContacts(userId: string, query: string) {
+  console.log('userId', userId);
   const client = await getHubspotClient(userId);
-  const result = await client.crm.contacts.searchApi.doSearch({
-    filterGroups: [{ filters: [{ propertyName: 'email', operator: 'CONTAINS_TOKEN', value: query }] }],
+
+  // Only add filterGroups if query is non-empty and non-blank
+  let searchRequest: any = {
     properties: ['firstname', 'lastname', 'email', 'phone'],
     limit: 5,
-    sorts: [],
     after: 0,
-  });
-  return result.results;
+  };
+
+  if (query && query.trim() !== '') {
+    const tokens = query.trim().split(/\s+/);
+    searchRequest.filterGroups = tokens.flatMap(token => [
+      [
+        { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: token }
+      ],
+      [
+        { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: token }
+      ],
+      [
+        { propertyName: 'email', operator: 'CONTAINS_TOKEN', value: token }
+      ]
+    ]);
+  }
+
+  // Remove any empty arrays (HubSpot doesn't like them)
+  if (!searchRequest.filterGroups) {
+    // Do nothing
+  }
+  if (!searchRequest.sorts || searchRequest.sorts.length === 0) {
+    delete searchRequest.sorts;
+  }
+
+  // Debug log
+  console.log('HubSpot searchRequest:', JSON.stringify(searchRequest, null, 2));
+
+  // Log the request URL and headers
+  const apiUrl = 'https://api.hubapi.com/crm/v3/objects/contacts/search';
+  const token = (await getHubspotClient(userId)).config.accessToken;
+  console.log('HubSpot API URL:', apiUrl);
+  console.log('HubSpot API Headers:', JSON.stringify({
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }, null, 2));
+
+  // Make the API call and log the response
+  try {
+    const result = await client.crm.contacts.searchApi.doSearch(searchRequest);
+    console.log('HubSpot API Response:', JSON.stringify(result, null, 2));
+    return result.results;
+  } catch (err) {
+    if (err && typeof err === 'object' && 'response' in err) {
+      const anyErr = err as any;
+      console.log('HubSpot API Error Response:', {
+        status: anyErr.response.status,
+        headers: anyErr.response.headers,
+        data: anyErr.response.data,
+      });
+      
+    }
+    throw err;
+  }
 }
 
-export async function createContact(userId: string, contactDetails: { email: string; firstname?: string; lastname?: string; phone?: string; }) {
-  const client = await getHubspotClient(userId);
-  return await client.crm.contacts.basicApi.create({ properties: contactDetails, associations: [] });
+export async function createContact(userId: string, { email, firstname, lastname, phone }: { email: string, firstname: string, lastname: string, phone?: string }) {
+  console.log('[HubSpot] createContact called with:', { email, firstname, lastname, phone });
+  try {
+    console.log('[HubSpot] Attempting to create contact:', { email, firstname, lastname, phone });
+    const client = await getHubspotClient(userId);
+    const result = await client.crm.contacts.basicApi.create({
+      properties: {
+        email: email || '',
+        firstname: firstname || '',
+        lastname: lastname || '',
+        phone: phone || ''
+      },
+      associations: []
+    });
+    console.log('[HubSpot] Contact creation result:', result);
+    // Defensive: check for success
+    if (!result || typeof result !== 'object' || !('id' in result)) {
+      console.error('[HubSpot] Contact creation returned invalid result:', result);
+      throw new Error('HubSpot contact creation failed or returned invalid result');
+    }
+    console.log('[HubSpot] createContact returning:', result);
+    return result;
+  } catch (error: any) {
+    console.error('[HubSpot] Error creating contact:', error);
+    try { console.error('[HubSpot] Error (stringified):', JSON.stringify(error, null, 2)); } catch {}
+    if (error.response) {
+      console.error('[HubSpot] API error.response:', error.response);
+    }
+    if (error.body) {
+      console.error('[HubSpot] API error.body:', error.body);
+    }
+    if (error.message) {
+      console.error('[HubSpot] API error.message:', error.message);
+    }
+    throw error;
+  }
 }
