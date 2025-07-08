@@ -5,7 +5,8 @@ import {
   hubspotAuth, 
   checkAuthStatus, 
   logout, 
-  refreshToken 
+  refreshToken,
+  importUserData
 } from '../controllers/auth.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
@@ -29,5 +30,6 @@ router.get('/hubspot/callback', authenticateToken, (req, res) => {
 router.get('/status', authenticateToken, checkAuthStatus);
 router.post('/logout', authenticateToken, logout);
 router.post('/refresh', authenticateToken, refreshToken);
+router.post('/import-data', authenticateToken, importUserData);
 
 export default router;

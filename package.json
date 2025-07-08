@@ -7,7 +7,9 @@
     "dev": "ts-node-dev --respawn server.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "setup-db": "ts-node scripts/setup-database.ts"
+    "setup-db": "ts-node scripts/setup-database.ts",
+    "setup-embeddings": "ts-node scripts/setup-embeddings-table.ts",
+    "import-data": "ts-node scripts/import-data.ts"
   },
   "keywords": [],
   "author": "",

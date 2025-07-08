@@ -47,11 +47,41 @@ export async function saveHubspotCredentials(userId: string, tokens: any) {
   );
 }
 
+export async function refreshHubspotToken(userId: string) {
+  console.log(`[HubSpot] Refreshing token for user ${userId}`);
+  // Get the refresh token from DB
+  const result = await pool.query(
+    'SELECT refresh_token FROM user_credentials WHERE user_id = $1 AND service = $2',
+    [userId, 'hubspot']
+  );
+  if (!result.rows.length) throw new Error('No HubSpot refresh token found');
+  const refreshToken = result.rows[0].refresh_token;
+
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: process.env.HUBSPOT_CLIENT_ID!,
+    client_secret: process.env.HUBSPOT_CLIENT_SECRET!,
+    redirect_uri: process.env.HUBSPOT_REDIRECT_URI!,
+    refresh_token: refreshToken,
+  });
+
+  const response = await axios.post('https://api.hubapi.com/oauth/v1/token', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+
+  // Save new tokens to DB
+  const tokens = response.data;
+  await pool.query(
+    `UPDATE user_credentials
+     SET access_token = $1, refresh_token = $2, expires_at = to_timestamp($3)
+     WHERE user_id = $4 AND service = 'hubspot'`,
+    [tokens.access_token, tokens.refresh_token, Math.floor(Date.now() / 1000) + tokens.expires_in, userId]
+  );
+  console.log(`[HubSpot] Token refreshed successfully for user ${userId}`);
+  return tokens.access_token;
+}
+
 export async function getHubspotClient(userId: string) {
-  // const result = await pool.query(
-  //   'SELECT access_token FROM user_credentials WHERE user_id = $1 AND service = $2',
-  //   [userId, 'hubspot']
-  // );
   const result = await pool.query(
     'SELECT access_token FROM user_credentials WHERE service = $1',
     ['hubspot']
@@ -62,7 +92,7 @@ export async function getHubspotClient(userId: string) {
 
 export async function searchContacts(userId: string, query: string) {
   console.log('userId', userId);
-  const client = await getHubspotClient(userId);
+  let client = await getHubspotClient(userId);
 
   // Only add filterGroups if query is non-empty and non-blank
   let searchRequest: any = {
@@ -73,17 +103,48 @@ export async function searchContacts(userId: string, query: string) {
 
   if (query && query.trim() !== '') {
     const tokens = query.trim().split(/\s+/);
-    searchRequest.filterGroups = tokens.flatMap(token => [
-      [
+    
+    // Create comprehensive filter groups to find all possible matches
+    const filterGroups = [];
+    
+    // 1. Exact full name match (if multiple tokens)
+    if (tokens.length >= 2) {
+      filterGroups.push([
+        { propertyName: 'firstname', operator: 'EQ', value: tokens[0] },
+        { propertyName: 'lastname', operator: 'EQ', value: tokens.slice(1).join(' ') }
+      ]);
+    }
+    
+    // 2. Partial matches for each token in firstname, lastname, or email
+    tokens.forEach(token => {
+      filterGroups.push([
         { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: token }
-      ],
-      [
+      ]);
+      filterGroups.push([
         { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: token }
-      ],
-      [
+      ]);
+      filterGroups.push([
         { propertyName: 'email', operator: 'CONTAINS_TOKEN', value: token }
-      ]
-    ]);
+      ]);
+    });
+    
+    // 3. Try combinations of tokens as firstname/lastname
+    if (tokens.length >= 2) {
+      // Try first token as firstname, rest as lastname
+      filterGroups.push([
+        { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: tokens[0] },
+        { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: tokens.slice(1).join(' ') }
+      ]);
+      
+      // Try last token as lastname, rest as firstname
+      filterGroups.push([
+        { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: tokens.slice(0, -1).join(' ') },
+        { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: tokens[tokens.length - 1] }
+      ]);
+    }
+    
+    searchRequest.filterGroups = filterGroups;
+    searchRequest.limit = 20; // Increase limit to get more potential matches
   }
 
   // Remove any empty arrays (HubSpot doesn't like them)
@@ -111,7 +172,17 @@ export async function searchContacts(userId: string, query: string) {
     const result = await client.crm.contacts.searchApi.doSearch(searchRequest);
     console.log('HubSpot API Response:', JSON.stringify(result, null, 2));
     return result.results;
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === 401 || (err.body && err.body.category === 'EXPIRED_AUTHENTICATION')) {
+      console.log('[HubSpot] Token expired, refreshing...');
+      // Refresh token and retry
+      await refreshHubspotToken(userId);
+      client = await getHubspotClient(userId);
+      // Retry the API call
+      const result = await client.crm.contacts.searchApi.doSearch(searchRequest);
+      console.log('HubSpot API Response (after refresh):', JSON.stringify(result, null, 2));
+      return result.results;
+    }
     if (err && typeof err === 'object' && 'response' in err) {
       const anyErr = err as any;
       console.log('HubSpot API Error Response:', {
@@ -119,7 +190,6 @@ export async function searchContacts(userId: string, query: string) {
         headers: anyErr.response.headers,
         data: anyErr.response.data,
       });
-      
     }
     throw err;
   }
@@ -129,24 +199,46 @@ export async function createContact(userId: string, { email, firstname, lastname
   console.log('[HubSpot] createContact called with:', { email, firstname, lastname, phone });
   try {
     console.log('[HubSpot] Attempting to create contact:', { email, firstname, lastname, phone });
-    const client = await getHubspotClient(userId);
-    const result = await client.crm.contacts.basicApi.create({
-      properties: {
-        email: email || '',
-        firstname: firstname || '',
-        lastname: lastname || '',
-        phone: phone || ''
-      },
-      associations: []
-    });
-    console.log('[HubSpot] Contact creation result:', result);
-    // Defensive: check for success
-    if (!result || typeof result !== 'object' || !('id' in result)) {
-      console.error('[HubSpot] Contact creation returned invalid result:', result);
-      throw new Error('HubSpot contact creation failed or returned invalid result');
+    let client = await getHubspotClient(userId);
+    try {
+      const result = await client.crm.contacts.basicApi.create({
+        properties: {
+          email: email || '',
+          firstname: firstname || '',
+          lastname: lastname || '',
+          phone: phone || ''
+        },
+        associations: []
+      });
+      console.log('[HubSpot] Contact creation result:', result);
+      // Defensive: check for success
+      if (!result || typeof result !== 'object' || !('id' in result)) {
+        console.error('[HubSpot] Contact creation returned invalid result:', result);
+        throw new Error('HubSpot contact creation failed or returned invalid result');
+      }
+      console.log('[HubSpot] createContact returning:', result);
+      return result;
+    } catch (err: any) {
+      if (err.code === 401 || (err.body && err.body.category === 'EXPIRED_AUTHENTICATION')) {
+        console.log('[HubSpot] Token expired during contact creation, refreshing...');
+        // Refresh token and retry
+        await refreshHubspotToken(userId);
+        client = await getHubspotClient(userId);
+        // Retry the contact creation
+        const result = await client.crm.contacts.basicApi.create({
+          properties: {
+            email: email || '',
+            firstname: firstname || '',
+            lastname: lastname || '',
+            phone: phone || ''
+          },
+          associations: []
+        });
+        console.log('[HubSpot] Contact creation result (after refresh):', result);
+        return result;
+      }
+      throw err;
     }
-    console.log('[HubSpot] createContact returning:', result);
-    return result;
   } catch (error: any) {
     console.error('[HubSpot] Error creating contact:', error);
     try { console.error('[HubSpot] Error (stringified):', JSON.stringify(error, null, 2)); } catch {}

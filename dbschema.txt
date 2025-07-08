@@ -112,3 +112,11 @@ CREATE INDEX idx_calendar_events_user_id ON calendar_events(user_id);
 -- Vector similarity search indexes
 CREATE INDEX idx_email_embeddings_vector ON email_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX idx_hubspot_embeddings_vector ON hubspot_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- For persistent user instructions (proactive agent)
+CREATE TABLE IF NOT EXISTS user_instructions (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  instruction TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);

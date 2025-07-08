@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserModel, CreateUserData } from '../modules/user.model';
 import { getGoogleAuthUrl, getGoogleTokens, getUserData, saveGoogleCredentials } from '../services/google.service';
 import { getHubspotAuthUrl, getHubspotTokens, saveHubspotCredentials } from '../services/hubspot.service';
+import { DataImportService } from '../services/data-import.service';
 
 // Extend Request interface to include user
 declare global {
@@ -88,6 +89,16 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
     await saveGoogleCredentials(user.id.toString(), tokens);
     console.log('✅ Credentials saved');
 
+    // Start background data import
+    console.log('🔄 Starting background data import...');
+    DataImportService.importAllData(user.id, 1000)
+      .then(() => {
+        console.log('✅ Background data import completed successfully');
+      })
+      .catch((error) => {
+        console.error('❌ Background data import failed:', error);
+      });
+
     // Generate JWT token
     console.log('🔄 Generating JWT token...');
     const token = jwt.sign(
@@ -145,6 +156,16 @@ export const hubspotCallback = async (req: Request, res: Response): Promise<void
     
     // Save HubSpot credentials
     await saveHubspotCredentials(userId.toString(), tokens);
+
+    // Start background HubSpot contacts import
+    console.log('🔄 Starting background HubSpot contacts import...');
+    DataImportService.importHubSpotContacts(userId)
+      .then(() => {
+        console.log('✅ Background HubSpot contacts import completed successfully');
+      })
+      .catch((error) => {
+        console.error('❌ Background HubSpot contacts import failed:', error);
+      });
 
     res.json({ success: true, message: 'HubSpot connected successfully' });
     return;
@@ -213,6 +234,37 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Logout failed' });
+    return;
+  }
+};
+
+export const importUserData = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // Start background data import
+    console.log(`🔄 Manual data import requested for user ${userId}...`);
+    DataImportService.importAllData(userId, 1000)
+      .then(() => {
+        console.log(`✅ Manual data import completed for user ${userId}`);
+      })
+      .catch((error) => {
+        console.error(`❌ Manual data import failed for user ${userId}:`, error);
+      });
+
+    res.json({ 
+      success: true, 
+      message: 'Data import started in background. This may take a few minutes.' 
+    });
+    return;
+  } catch (error) {
+    console.error('Manual data import error:', error);
+    res.status(500).json({ error: 'Failed to start data import' });
     return;
   }
 };

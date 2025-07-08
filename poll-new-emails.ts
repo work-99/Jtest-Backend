@@ -4,6 +4,8 @@ import { processProactiveEvent } from './src/services/ai.service';
 import pool from './src/config/db';
 
 const USER_ID = 2; // <-- Replace with your actual user ID
+const POLL_INTERVAL_MS = 30000; // 30 seconds
+let lastProcessedEmailId: string | null = null;
 
 async function getOngoingInstructions(userId: string) {
   const { rows } = await pool.query(
@@ -18,6 +20,10 @@ async function poll() {
   const emails = await GmailService.listEmails(USER_ID, 1);
 
   for (const email of emails) {
+    if (email.id === lastProcessedEmailId) {
+      // Skip if this email was already processed
+      return;
+    }
     // Check if sender is in HubSpot
     const contacts = await searchContacts(USER_ID.toString(), email.from);
     const isInHubSpot = contacts.some(
@@ -36,7 +42,21 @@ async function poll() {
       const result = await processProactiveEvent(USER_ID.toString(), 'new_email', eventData, instructions);
       console.log('Proactive agent result:', result);
     }
+    // Update last processed email ID
+    lastProcessedEmailId = email.id;
   }
 }
 
-poll().catch(console.error); 
+async function pollLoop() {
+  while (true) {
+    try {
+      await poll();
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+    await new Promise(res => setTimeout(res, POLL_INTERVAL_MS));
+  }
+}
+
+pollLoop();
+console.log('Polling script started...'); 
