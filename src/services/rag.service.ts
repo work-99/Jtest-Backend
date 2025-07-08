@@ -9,7 +9,7 @@ import { searchContacts } from './hubspot.service';
 // });
 
 const openai = new OpenAI({
-  apiKey: "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"
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 interface EmbeddingResult {

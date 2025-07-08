@@ -22,7 +22,7 @@ console.log('[AI] hubspotService.createContact (top-level):', typeof hubspotServ
 // });
 
 const openai = new OpenAI({
-  apiKey: "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"
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 const tools = [
@@ -458,19 +458,19 @@ const handleToolCalls = async (userId: string, toolCalls: any, aiMessage: any) =
     console.log('[AI] handleToolCalls called:', name, args);
     let result;
     try {
-      switch (name) {
-        case 'search_emails_and_contacts':
+    switch (name) {
+      case 'search_emails_and_contacts':
           if (!args || typeof args.query !== 'string') {
             result = { error: 'Missing or invalid query argument for search_emails_and_contacts' };
           } else {
-          result = await searchData(userId, args.query);
+        result = await searchData(userId, args.query);
           }
-          break;
-        case 'schedule_appointment':
+        break;
+      case 'schedule_appointment':
           if (!args || typeof args.contact_name !== 'string') {
             result = { error: 'Missing or invalid contact_name argument for schedule_appointment' };
           } else {
-          result = await scheduleAppointment(userId, args.contact_name, args.preferred_times);
+        result = await scheduleAppointment(userId, args.contact_name, args.preferred_times);
           }
           break;
         case 'create_hubspot_contact':
@@ -500,10 +500,10 @@ const handleToolCalls = async (userId: string, toolCalls: any, aiMessage: any) =
               throw err;
             }
           }
-          break;
-        default:
-          result = { error: `Unknown tool: ${name}` };
-      }
+        break;
+      default:
+        result = { error: `Unknown tool: ${name}` };
+    }
     } catch (error: any) {
       console.error(`Error executing tool ${name}:`, error);
       result = { error: `Failed to execute ${name}: ${error.message}` };
