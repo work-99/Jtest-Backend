@@ -99,6 +99,9 @@ export async function searchContacts(userId: string, query: string) {
     properties: ['firstname', 'lastname', 'email', 'phone'],
     limit: 5,
     after: 0,
+    sorts: [
+      { propertyName: 'createdate', direction: 'DESCENDING' }
+    ]
   };
 
   if (query && query.trim() !== '') {
@@ -181,8 +184,8 @@ export async function searchContacts(userId: string, query: string) {
       // Retry the API call
       const result = await client.crm.contacts.searchApi.doSearch(searchRequest);
       console.log('HubSpot API Response (after refresh):', JSON.stringify(result, null, 2));
-      return result.results;
-    }
+  return result.results;
+}
     if (err && typeof err === 'object' && 'response' in err) {
       const anyErr = err as any;
       console.log('HubSpot API Error Response:', {
