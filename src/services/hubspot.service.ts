@@ -11,7 +11,7 @@ export function getHubspotAuthUrl(userId?: string) {
   const params = new URLSearchParams({
     client_id: HUBSPOT_CLIENT_ID!,
     redirect_uri: HUBSPOT_REDIRECT_URI!,
-    scope: 'crm.objects.contacts.read oauth',
+    scope: 'crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.objects.companies.read crm.objects.deals.read oauth',
     response_type: 'code',
   });
   
