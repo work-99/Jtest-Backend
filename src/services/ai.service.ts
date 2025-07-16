@@ -256,8 +256,10 @@ const handleAppointmentScheduling = async (userId: string, message: string) => {
     
     const contactName = parsed.contact_name;
     console.log('Looking for contact:', contactName);
+    console.log('User ID for contact search:', userId);
     // 2. Search HubSpot contacts for the name
     const contacts = await searchContacts(userId, contactName);
+    console.log('Contacts returned from searchContacts:', JSON.stringify(contacts, null, 2));
     if (!contacts.length) {
       return { text: `I couldn't find a contact named "${contactName}" in HubSpot.` };
     }
@@ -314,10 +316,7 @@ const handleAppointmentScheduling = async (userId: string, message: string) => {
     
     // Sort by score (highest first) and log all matches
     scoredContacts.sort((a, b) => b.score - a.score);
-    console.log('Contact matches found:');
-    scoredContacts.forEach((match, index) => {
-      console.log(`${index + 1}. ${match.fullName} (${match.email}) - Score: ${match.score}`);
-    });
+    console.log('Contact matches found (scored):', JSON.stringify(scoredContacts, null, 2));
     
     // Get the best match
     const bestMatch = scoredContacts[0];
@@ -339,7 +338,7 @@ const handleAppointmentScheduling = async (userId: string, message: string) => {
     if (!contactEmail) {
       return { text: `I found the contact "${fullName}" but they don't have an email address in your CRM. Please add their email address first.` };
     }
-    console.log('Found contact:', fullName, 'Email:', contactEmail);
+    console.log('Found contact:', fullName, 'Email:', contactEmail, 'User ID:', userId);
     // 3. Fetch available calendar times
     const availableTimes = await getAvailableTimes(userId);
     if (!availableTimes || availableTimes.length === 0) {
@@ -355,19 +354,10 @@ const handleAppointmentScheduling = async (userId: string, message: string) => {
       body: emailBody
     });
     console.log('Email sent successfully:', emailResult);
-    return {
-      text: `Perfect! I've sent an email to ${fullName} (${contactEmail}) with your available appointment times for the next few days. They can choose a time that works best for them and reply to confirm the appointment.`,
-      actionRequired: true,
-      data: {
-        contactName: fullName,
-        contactEmail,
-        availableTimes,
-        emailSent: true
-      }
-    };
+    return { text: `I emailed ${fullName} (${contactEmail}) with available times.` };
   } catch (error) {
-    console.error('Error handling appointment scheduling:', error);
-    return { text: "I encountered an error while trying to schedule the appointment. Please try again or contact support if the issue persists." };
+    console.error('Error in handleAppointmentScheduling:', error);
+    return { text: "An error occurred while scheduling the appointment." };
   }
 };
 
