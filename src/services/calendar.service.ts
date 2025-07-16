@@ -27,6 +27,75 @@ export const getCalendarClient = async (userId: string) => {
   return google.calendar({ version: 'v3', auth: oauth2Client });
 };
 
+// Helper method to execute Calendar API calls with automatic token refresh
+export const executeWithTokenRefresh = async <T>(
+  userId: string, 
+  operation: (calendar: any) => Promise<T>
+): Promise<T> => {
+  try {
+    const calendar = await getCalendarClient(userId);
+    return await operation(calendar);
+  } catch (error: any) {
+    // Check if it's an authentication error (401)
+    if (error.code === 401 || 
+        (error.response && error.response.status === 401) ||
+        (error.message && error.message.includes('unauthorized'))) {
+      console.log(`[Calendar] Token expired for user ${userId}, refreshing...`);
+      
+      try {
+        // Refresh the access token
+        await refreshAccessToken(userId);
+        
+        // Retry the operation with fresh token
+        const calendar = await getCalendarClient(userId);
+        return await operation(calendar);
+              } catch (refreshError) {
+          console.error('[Calendar] Failed to refresh token:', refreshError);
+          throw new Error('Google authentication expired. Please re-authenticate by calling /api/auth/google/reauthenticate');
+        }
+    }
+    
+    // Re-throw other errors
+    throw error;
+  }
+};
+
+// Helper method to refresh access token
+export const refreshAccessToken = async (userId: string): Promise<void> => {
+  try {
+    const result = await pool.query(
+      'SELECT refresh_token FROM user_credentials WHERE user_id = $1 AND service = $2',
+      [userId, 'google']
+    );
+
+    if (!result.rows.length) {
+      throw new Error('Refresh token not found');
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    oauth2Client.setCredentials({
+      refresh_token: result.rows[0].refresh_token
+    });
+
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    await pool.query(
+      `UPDATE user_credentials 
+       SET access_token = $1, expires_at = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = $3 AND service = $4`,
+      [credentials.access_token, credentials.expiry_date, userId, 'google']
+    );
+  } catch (error) {
+    console.error('Error refreshing access token:', error);
+    throw new Error('Failed to refresh access token');
+  }
+};
+
 export const scheduleEvent = async (
   userId: string,
   eventDetails: {
@@ -37,13 +106,14 @@ export const scheduleEvent = async (
     description?: string;
   }
 ) => {
-  const calendar = await getCalendarClient(userId);
-  const event = await calendar.events.insert({
-    calendarId: 'primary',
-    requestBody: eventDetails
-  });
+  return executeWithTokenRefresh(userId, async (calendar) => {
+    const event = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: eventDetails
+    });
 
-  return event.data;
+    return event.data;
+  });
 };
 
 export const createCalendarEvent = async (
@@ -57,29 +127,29 @@ export const createCalendarEvent = async (
     location?: string;
   }
 ) => {
-  const calendar = await getCalendarClient(userId);
-  
-  const event = {
-    summary: eventDetails.summary,
-    description: eventDetails.description,
-    start: {
-      dateTime: eventDetails.startTime,
-      timeZone: 'America/New_York'
-    },
-    end: {
-      dateTime: eventDetails.endTime,
-      timeZone: 'America/New_York'
-    },
-    attendees: eventDetails.attendees?.map(email => ({ email })) || [],
-    location: eventDetails.location
-  };
+  return executeWithTokenRefresh(userId, async (calendar) => {
+    const event = {
+      summary: eventDetails.summary,
+      description: eventDetails.description,
+      start: {
+        dateTime: eventDetails.startTime,
+        timeZone: 'America/New_York'
+      },
+      end: {
+        dateTime: eventDetails.endTime,
+        timeZone: 'America/New_York'
+      },
+      attendees: eventDetails.attendees?.map(email => ({ email })) || [],
+      location: eventDetails.location
+    };
 
-  const result = await calendar.events.insert({
-    calendarId: 'primary',
-    requestBody: event
+    const result = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: event
+    });
+
+    return result.data;
   });
-
-  return result.data;
 };
 
 export const getAvailableSlots = async (
@@ -88,19 +158,20 @@ export const getAvailableSlots = async (
   timeMax: string,
   duration = 30
 ) => {
-  const calendar = await getCalendarClient(userId);
-  const { data } = await calendar.freebusy.query({
-    requestBody: {
-      timeMin,
-      timeMax,
-      items: [{ id: 'primary' }]
-    }
-  });
+  return executeWithTokenRefresh(userId, async (calendar) => {
+    const { data } = await calendar.freebusy.query({
+      requestBody: {
+        timeMin,
+        timeMax,
+        items: [{ id: 'primary' }]
+      }
+    });
 
-  // Process busy slots and find available time
-  const busySlots = data.calendars?.primary.busy || [];
-  // Implement logic to find available slots
-  return findAvailableSlots(busySlots, timeMin, timeMax, duration);
+    // Process busy slots and find available time
+    const busySlots = data.calendars?.primary.busy || [];
+    // Implement logic to find available slots
+    return findAvailableSlots(busySlots, timeMin, timeMax, duration);
+  });
 };
 
 export const getAvailableTimes = async (
@@ -118,42 +189,43 @@ export const getAvailableTimes = async (
     const timeMin = startOfDay.toISOString();
     const timeMax = endOfDay.toISOString();
     
-    const calendar = await getCalendarClient(userId);
-    const { data } = await calendar.freebusy.query({
-      requestBody: {
-        timeMin,
-        timeMax,
-        items: [{ id: 'primary' }]
-      }
-    });
-
-    const busySlots = data.calendars?.primary.busy || [];
-    const availableTimes: string[] = [];
-    
-    // Generate time slots every hour from 9 AM to 5 PM
-    for (let hour = 9; hour < 17; hour++) {
-      const slotStart = new Date(date);
-      slotStart.setHours(hour, 0, 0, 0);
-      
-      const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
-      
-      // Check if this slot conflicts with any busy time
-      const isAvailable = !busySlots.some(busy => {
-        const busyStart = new Date(busy.start || '');
-        const busyEnd = new Date(busy.end || '');
-        return slotStart < busyEnd && slotEnd > busyStart;
+    return executeWithTokenRefresh(userId, async (calendar) => {
+      const { data } = await calendar.freebusy.query({
+        requestBody: {
+          timeMin,
+          timeMax,
+          items: [{ id: 'primary' }]
+        }
       });
+
+      const busySlots = data.calendars?.primary.busy || [];
+      const availableTimes: string[] = [];
       
-      if (isAvailable && slotEnd <= endOfDay) {
-        availableTimes.push(slotStart.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
-          minute: '2-digit',
-          hour12: true 
-        }));
+      // Generate time slots every hour from 9 AM to 5 PM
+      for (let hour = 9; hour < 17; hour++) {
+        const slotStart = new Date(date);
+        slotStart.setHours(hour, 0, 0, 0);
+        
+        const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
+        
+        // Check if this slot conflicts with any busy time
+        const isAvailable = !busySlots.some((busy: any) => {
+          const busyStart = new Date(busy.start || '');
+          const busyEnd = new Date(busy.end || '');
+          return slotStart < busyEnd && slotEnd > busyStart;
+        });
+        
+        if (isAvailable && slotEnd <= endOfDay) {
+          availableTimes.push(slotStart.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+          }));
+        }
       }
-    }
-    
-    return availableTimes;
+      
+      return availableTimes;
+    });
   } catch (error) {
     console.error('Error getting available times:', error);
     // Return some default times if there's an error
@@ -189,8 +261,7 @@ function findAvailableSlots(busySlots: any[], timeMin: string, timeMax: string, 
 
 // Get upcoming calendar events
 export const getUpcomingEvents = async (userId: string, maxResults: number = 10) => {
-  try {
-    const calendar = await getCalendarClient(userId);
+  return executeWithTokenRefresh(userId, async (calendar) => {
     const now = new Date();
     const timeMin = now.toISOString();
     
@@ -203,7 +274,7 @@ export const getUpcomingEvents = async (userId: string, maxResults: number = 10)
     });
 
     const events = response.data.items || [];
-    return events.map(event => ({
+    return events.map((event: any) => ({
       id: event.id,
       summary: event.summary || 'No title',
       description: event.description || '',
@@ -213,19 +284,11 @@ export const getUpcomingEvents = async (userId: string, maxResults: number = 10)
       location: event.location || '',
       htmlLink: event.htmlLink
     }));
-  } catch (error) {
-    console.error('Error fetching calendar events:', error);
-    throw new Error('Failed to fetch calendar events');
-  }
+  });
 };
 
 // Get next meeting/event
 export const getNextEvent = async (userId: string) => {
-  try {
-    const events = await getUpcomingEvents(userId, 1);
-    return events.length > 0 ? events[0] : null;
-  } catch (error) {
-    console.error('Error fetching next event:', error);
-    throw new Error('Failed to fetch next event');
-  }
+  const events = await getUpcomingEvents(userId, 1);
+  return events.length > 0 ? events[0] : null;
 };

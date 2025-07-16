@@ -4,6 +4,7 @@ import { UserModel, CreateUserData } from '../modules/user.model';
 import { getGoogleAuthUrl, getGoogleTokens, getUserData, saveGoogleCredentials } from '../services/google.service';
 import { getHubspotAuthUrl, getHubspotTokens, saveHubspotCredentials } from '../services/hubspot.service';
 import { DataImportService } from '../services/data-import.service';
+import pool from '../config/db';
 
 // Extend Request interface to include user
 declare global {
@@ -300,6 +301,41 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
   } catch (error) {
     console.error('Token refresh error:', error);
     res.status(500).json({ error: 'Failed to refresh token' });
+    return;
+  }
+};
+
+export const reauthenticateGoogle = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    console.log(`🔄 Re-authentication requested for user ${userId}`);
+
+    // Clear existing Google credentials
+    await pool.query(
+      'DELETE FROM user_credentials WHERE user_id = $1 AND service = $2',
+      [userId, 'google']
+    );
+
+    console.log(`✅ Cleared invalid Google credentials for user ${userId}`);
+
+    // Generate new Google OAuth URL
+    const authUrl = getGoogleAuthUrl();
+    
+    res.json({ 
+      success: true, 
+      message: 'Invalid credentials cleared. Please re-authenticate with Google.',
+      authUrl 
+    });
+    return;
+  } catch (error) {
+    console.error('Google re-authentication error:', error);
+    res.status(500).json({ error: 'Failed to initiate re-authentication' });
     return;
   }
 };

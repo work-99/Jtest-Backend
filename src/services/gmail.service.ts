@@ -48,9 +48,41 @@ export class GmailService {
     return google.gmail({ version: 'v1', auth: oauth2Client });
   }
 
-  static async listEmails(userId: number, maxResults: number = 50, query?: string): Promise<EmailMessage[]> {
+  // Helper method to execute Gmail API calls with automatic token refresh
+  static async executeWithTokenRefresh<T>(
+    userId: number, 
+    operation: (gmail: gmail_v1.Gmail) => Promise<T>
+  ): Promise<T> {
     try {
       const gmail = await this.getGmailClient(userId);
+      return await operation(gmail);
+    } catch (error: any) {
+      // Check if it's an authentication error (401)
+      if (error.code === 401 || 
+          (error.response && error.response.status === 401) ||
+          (error.message && error.message.includes('unauthorized'))) {
+        console.log(`[Gmail] Token expired for user ${userId}, refreshing...`);
+        
+        try {
+          // Refresh the access token
+          await this.refreshAccessToken(userId);
+          
+          // Retry the operation with fresh token
+          const gmail = await this.getGmailClient(userId);
+          return await operation(gmail);
+        } catch (refreshError) {
+          console.error('[Gmail] Failed to refresh token:', refreshError);
+          throw new Error('Google authentication expired. Please re-authenticate by calling /api/auth/google/reauthenticate');
+        }
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
+  }
+
+  static async listEmails(userId: number, maxResults: number = 50, query?: string): Promise<EmailMessage[]> {
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const response = await gmail.users.messages.list({
         userId: 'me',
         maxResults,
@@ -90,15 +122,11 @@ export class GmailService {
         return email;
       });
       return await Promise.all(emailPromises);
-    } catch (error) {
-      console.error('Error listing emails:', error);
-      throw new Error('Failed to list emails');
-    }
+    });
   }
 
   static async getEmail(userId: number, emailId: string): Promise<EmailMessage> {
-    try {
-      const gmail = await this.getGmailClient(userId);
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const response = await gmail.users.messages.get({
         userId: 'me',
         id: emailId,
@@ -119,16 +147,11 @@ export class GmailService {
         'email'
       );
       return email;
-    } catch (error) {
-      console.error('Error getting email:', error);
-      throw new Error('Failed to get email');
-    }
+    });
   }
 
   static async sendEmail(userId: number, emailData: SendEmailData): Promise<string> {
-    try {
-      const gmail = await this.getGmailClient(userId);
-      
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const message = this.createEmailMessage(emailData);
       const encodedMessage = Buffer.from(message).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
 
@@ -146,16 +169,11 @@ export class GmailService {
       const response = await gmail.users.messages.send(params);
       
       return response.data.id!;
-    } catch (error) {
-      console.error('Error sending email:', error);
-      throw new Error('Failed to send email');
-    }
+    });
   }
 
   static async replyToEmail(userId: number, threadId: string, subject: string, body: string): Promise<string> {
-    try {
-      const gmail = await this.getGmailClient(userId);
-      
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const message = this.createEmailMessage({
         to: '', // Will be extracted from original email
         subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
@@ -174,16 +192,11 @@ export class GmailService {
       });
 
       return response.data.id!;
-    } catch (error) {
-      console.error('Error replying to email:', error);
-      throw new Error('Failed to reply to email');
-    }
+    });
   }
 
   static async searchEmails(userId: number, query: string, maxResults: number = 20): Promise<EmailMessage[]> {
-    try {
-      const gmail = await this.getGmailClient(userId);
-      
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const response = await gmail.users.messages.list({
         userId: 'me',
         q: query,
@@ -202,16 +215,11 @@ export class GmailService {
       });
 
       return await Promise.all(emailPromises);
-    } catch (error) {
-      console.error('Error searching emails:', error);
-      throw new Error('Failed to search emails');
-    }
+    });
   }
 
   static async getThread(userId: number, threadId: string): Promise<EmailMessage[]> {
-    try {
-      const gmail = await this.getGmailClient(userId);
-      
+    return this.executeWithTokenRefresh(userId, async (gmail) => {
       const response = await gmail.users.threads.get({
         userId: 'me',
         id: threadId,
@@ -220,10 +228,7 @@ export class GmailService {
 
       const messages = response.data.messages || [];
       return messages.map(message => this.parseEmailMessage(message));
-    } catch (error) {
-      console.error('Error getting thread:', error);
-      throw new Error('Failed to get thread');
-    }
+    });
   }
 
   private static parseEmailMessage(message: any): EmailMessage {
