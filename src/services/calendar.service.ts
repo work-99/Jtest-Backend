@@ -46,6 +46,42 @@ export const scheduleEvent = async (
   return event.data;
 };
 
+export const createCalendarEvent = async (
+  userId: string,
+  eventDetails: {
+    summary: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    attendees?: string[];
+    location?: string;
+  }
+) => {
+  const calendar = await getCalendarClient(userId);
+  
+  const event = {
+    summary: eventDetails.summary,
+    description: eventDetails.description,
+    start: {
+      dateTime: eventDetails.startTime,
+      timeZone: 'America/New_York'
+    },
+    end: {
+      dateTime: eventDetails.endTime,
+      timeZone: 'America/New_York'
+    },
+    attendees: eventDetails.attendees?.map(email => ({ email })) || [],
+    location: eventDetails.location
+  };
+
+  const result = await calendar.events.insert({
+    calendarId: 'primary',
+    requestBody: event
+  });
+
+  return result.data;
+};
+
 export const getAvailableSlots = async (
   userId: string,
   timeMin: string,
@@ -65,6 +101,67 @@ export const getAvailableSlots = async (
   const busySlots = data.calendars?.primary.busy || [];
   // Implement logic to find available slots
   return findAvailableSlots(busySlots, timeMin, timeMax, duration);
+};
+
+export const getAvailableTimes = async (
+  userId: string,
+  date: string,
+  duration: number = 60
+): Promise<string[]> => {
+  try {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(9, 0, 0, 0); // 9 AM
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(17, 0, 0, 0); // 5 PM
+    
+    const timeMin = startOfDay.toISOString();
+    const timeMax = endOfDay.toISOString();
+    
+    const calendar = await getCalendarClient(userId);
+    const { data } = await calendar.freebusy.query({
+      requestBody: {
+        timeMin,
+        timeMax,
+        items: [{ id: 'primary' }]
+      }
+    });
+
+    const busySlots = data.calendars?.primary.busy || [];
+    const availableTimes: string[] = [];
+    
+    // Generate time slots every hour from 9 AM to 5 PM
+    for (let hour = 9; hour < 17; hour++) {
+      const slotStart = new Date(date);
+      slotStart.setHours(hour, 0, 0, 0);
+      
+      const slotEnd = new Date(slotStart.getTime() + duration * 60 * 1000);
+      
+      // Check if this slot conflicts with any busy time
+      const isAvailable = !busySlots.some(busy => {
+        const busyStart = new Date(busy.start || '');
+        const busyEnd = new Date(busy.end || '');
+        return slotStart < busyEnd && slotEnd > busyStart;
+      });
+      
+      if (isAvailable && slotEnd <= endOfDay) {
+        availableTimes.push(slotStart.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }));
+      }
+    }
+    
+    return availableTimes;
+  } catch (error) {
+    console.error('Error getting available times:', error);
+    // Return some default times if there's an error
+    return [
+      '9:00 AM', '10:00 AM', '11:00 AM', '1:00 PM', 
+      '2:00 PM', '3:00 PM', '4:00 PM'
+    ];
+  }
 };
 
 // Helper function to find available time slots

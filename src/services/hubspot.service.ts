@@ -257,3 +257,64 @@ export async function createContact(userId: string, { email, firstname, lastname
     throw error;
   }
 }
+
+export async function addContactNote(userId: string, contactId: string, note: string) {
+  console.log('[HubSpot] addContactNote called with:', { contactId, note });
+  try {
+    let client = await getHubspotClient(userId);
+    try {
+      const result = await client.crm.objects.notes.basicApi.create({
+        properties: {
+          hs_note_body: note,
+          hs_timestamp: Date.now().toString()
+        },
+        associations: [
+          {
+            to: {
+              id: contactId
+            },
+            types: [
+              {
+                associationCategory: "HUBSPOT_DEFINED",
+                associationTypeId: 1
+              }
+            ]
+          }
+        ]
+      });
+      console.log('[HubSpot] Note creation result:', result);
+      return result;
+    } catch (err: any) {
+      if (err.code === 401 || (err.body && err.body.category === 'EXPIRED_AUTHENTICATION')) {
+        console.log('[HubSpot] Token expired during note creation, refreshing...');
+        await refreshHubspotToken(userId);
+        client = await getHubspotClient(userId);
+        const result = await client.crm.objects.notes.basicApi.create({
+          properties: {
+            hs_note_body: note,
+            hs_timestamp: Date.now().toString()
+          },
+          associations: [
+            {
+              to: {
+                id: contactId
+              },
+              types: [
+                {
+                  associationCategory: "HUBSPOT_DEFINED",
+                  associationTypeId: 1
+                }
+              ]
+            }
+          ]
+        });
+        console.log('[HubSpot] Note creation result (after refresh):', result);
+        return result;
+      }
+      throw err;
+    }
+  } catch (error: any) {
+    console.error('[HubSpot] Error creating note:', error);
+    throw error;
+  }
+}

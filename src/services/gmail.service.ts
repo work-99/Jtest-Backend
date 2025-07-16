@@ -194,7 +194,8 @@ export class GmailService {
       const emailPromises = messages.map(async (message) => {
         const email = await gmail.users.messages.get({
           userId: 'me',
-          id: message.id!
+          id: message.id!,
+          format: 'full'
         });
 
         return this.parseEmailMessage(email.data);

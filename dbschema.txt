@@ -56,6 +56,7 @@ CREATE TABLE tasks (
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   type VARCHAR(100) NOT NULL,
   status VARCHAR(50) DEFAULT 'pending',
+  priority VARCHAR(20) DEFAULT 'medium',
   data JSONB,
   result JSONB,
   error_message TEXT,
