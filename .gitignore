@@ -7,6 +7,15 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
+# Test files
+test-*.js
+test-*.ts
+test-*.json
+test-*.txt
+test-*.md
+test-*.html
+test-*.css
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 

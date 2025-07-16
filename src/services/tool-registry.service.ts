@@ -52,16 +52,15 @@ export class ToolRegistry {
     // Contact management tools
     this.registerTool({
       name: 'create_hubspot_contact',
-      description: 'Create a new contact in HubSpot with a note about the email',
+      description: 'Create a new contact in HubSpot',
       parameters: {
         type: 'object',
         properties: {
           email: { type: 'string', description: 'Email address of the contact' },
           name: { type: 'string', description: 'Full name of the contact' },
-          note: { type: 'string', description: 'A note about the email or context' },
           phone: { type: 'string', description: 'Phone number of the contact' }
         },
-        required: ['email', 'name', 'note']
+        required: ['email', 'name']
       },
       execute: async (userId: string, params: any) => {
         const [firstName, ...lastNameParts] = params.name.split(' ');
@@ -73,16 +72,6 @@ export class ToolRegistry {
           lastname: lastName,
           phone: params.phone
         });
-
-        // Add note if provided (handle errors gracefully)
-        if (params.note) {
-          try {
-            await addContactNote(userId, contact.id, params.note);
-          } catch (noteError) {
-            console.warn(`Failed to add note to contact ${contact.id}:`, noteError);
-            // Continue without the note - contact creation is still successful
-          }
-        }
 
         return {
           success: true,
