@@ -110,7 +110,6 @@ export class DataImportService {
             website: contact.properties?.website || '',
             lifecycleStage: contact.properties?.lifecyclestage || '',
             leadStatus: contact.properties?.hs_lead_status || '',
-            notes: contact.properties?.notes || '',
             allProperties: contact.properties
           };
           
@@ -255,10 +254,7 @@ export class DataImportService {
       parts.push(`Lead Status: ${contact.properties.hs_lead_status}`);
     }
     
-    // Add notes
-    if (contact.properties?.notes) {
-      parts.push(`Notes: ${contact.properties.notes}`);
-    }
+
     
     return parts.join('\n');
   }

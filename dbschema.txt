@@ -44,7 +44,6 @@ CREATE TABLE hubspot_embeddings (
   contact_id VARCHAR(255),
   contact_name VARCHAR(255),
   email VARCHAR(255),
-  notes TEXT,
   properties JSONB,
   embedding vector(1536),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

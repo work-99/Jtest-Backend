@@ -1,5 +1,5 @@
 import { GmailService } from './gmail.service';
-import { searchContacts, addContactNote } from './hubspot.service';
+import { searchContacts } from './hubspot.service';
 import { createCalendarEvent, getAvailableTimes } from './calendar.service';
 import { processProactiveEvent } from './ai.service';
 import { webSocketService } from './websocket.service';
@@ -123,15 +123,6 @@ Focus on:
         threadId: email.threadId
       });
       
-      // Add note to HubSpot contact
-      const contacts = await searchContacts(userId, contactName);
-      if (contacts.length > 0) {
-        const contact = contacts[0];
-        await addContactNote(userId, contact.id, 
-          `Appointment confirmed for ${subject} on ${eventTime.start}. Scheduled via email response.`
-        );
-      }
-      
       console.log(`Appointment confirmed for ${contactName}`);
       
     } catch (error) {
@@ -159,15 +150,6 @@ Focus on:
         body: declineBody,
         threadId: email.threadId
       });
-      
-      // Add note to HubSpot
-      const contacts = await searchContacts(userId, contactName);
-      if (contacts.length > 0) {
-        const contact = contacts[0];
-        await addContactNote(userId, contact.id, 
-          `Appointment declined. Reason: ${analysis.reason || 'Not specified'}`
-        );
-      }
       
     } catch (error) {
       console.error('Error handling appointment decline:', error);

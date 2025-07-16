@@ -1,5 +1,5 @@
 import { GmailService } from './gmail.service';
-import { searchContacts, createContact, addContactNote } from './hubspot.service';
+import { searchContacts, createContact } from './hubspot.service';
 import { getUpcomingEvents, createCalendarEvent, getAvailableTimes } from './calendar.service';
 import { RAGService } from './rag.service';
 import pool from '../config/db';
