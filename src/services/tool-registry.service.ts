@@ -74,9 +74,14 @@ export class ToolRegistry {
           phone: params.phone
         });
 
-        // Add note if provided
+        // Add note if provided (handle errors gracefully)
         if (params.note) {
-          await addContactNote(userId, contact.id, params.note);
+          try {
+            await addContactNote(userId, contact.id, params.note);
+          } catch (noteError) {
+            console.warn(`Failed to add note to contact ${contact.id}:`, noteError);
+            // Continue without the note - contact creation is still successful
+          }
         }
 
         return {

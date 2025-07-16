@@ -83,8 +83,8 @@ export async function refreshHubspotToken(userId: string) {
 
 export async function getHubspotClient(userId: string) {
   const result = await pool.query(
-    'SELECT access_token FROM user_credentials WHERE service = $1',
-    ['hubspot']
+    'SELECT access_token FROM user_credentials WHERE user_id = $1 AND service = $2',
+    [userId, 'hubspot']
   );
   if (!result.rows.length) throw new Error('HubSpot credentials not found');
   return new Client({ accessToken: result.rows[0].access_token });

@@ -5,6 +5,7 @@ import pool from '../config/db';
 
 const POLL_INTERVAL_MS = 30000; // 30 seconds
 let lastProcessedContactIds: Record<string, string | null> = {};
+let processedContactsInSession: Set<string> = new Set(); // Track contacts processed in current session
 
 async function getAllHubspotUserIds(): Promise<string[]> {
   const { rows } = await pool.query(
@@ -39,8 +40,9 @@ async function pollContacts() {
         const latestContact = sortedContacts[0];
         console.log(`[ContactPoller] Latest contact for user ${userId}: ${latestContact.id} (${latestContact.properties?.email})`);
         
-        // Check if we've already processed this contact
-        if (latestContact.id === lastProcessedContactIds[userId]) {
+        // Check if we've already processed this contact (multiple checks to prevent duplicates)
+        const contactKey = `${userId}-${latestContact.id}`;
+        if (latestContact.id === lastProcessedContactIds[userId] || processedContactsInSession.has(contactKey)) {
           console.log(`[ContactPoller] Contact ${latestContact.id} already processed for user ${userId}`);
           continue;
         }
@@ -74,6 +76,28 @@ async function pollContacts() {
         console.log(`[ContactPoller] Has thank you instruction: ${hasThankYou}`);
         
         if (hasThankYou && latestContact.properties?.email) {
+          // Check database to see if we've already sent a thank you email to this contact
+          const { rows } = await pool.query(
+            'SELECT id FROM thank_you_emails WHERE user_id = $1 AND contact_id = $2',
+            [userId, latestContact.id]
+          );
+          
+          if (rows.length > 0) {
+            console.log(`[ContactPoller] Already sent thank you email to contact ${latestContact.id} (${latestContact.properties.email})`);
+            lastProcessedContactIds[userId] = latestContact.id;
+            processedContactsInSession.add(contactKey);
+            continue;
+          }
+          
+          // Additional check: prevent sending multiple thank you emails to the same email address
+          const emailKey = `${userId}-${latestContact.properties.email.toLowerCase()}`;
+          if (processedContactsInSession.has(emailKey)) {
+            console.log(`[ContactPoller] Already sent thank you email to ${latestContact.properties.email} in this session`);
+            lastProcessedContactIds[userId] = latestContact.id;
+            processedContactsInSession.add(contactKey);
+            continue;
+          }
+          
           console.log(`[ContactPoller] Sending thank you email to ${latestContact.properties.email}`);
           
           // Send thank you email
@@ -84,6 +108,15 @@ async function pollContacts() {
           });
           
           console.log(`[ContactPoller] ✅ Sent thank you email to new contact: ${latestContact.properties.email}`);
+          
+          // Record the sent email in database
+          await pool.query(
+            'INSERT INTO thank_you_emails (user_id, contact_id, email_address) VALUES ($1, $2, $3)',
+            [userId, latestContact.id, latestContact.properties.email]
+          );
+          
+          // Mark this email as processed
+          processedContactsInSession.add(emailKey);
           
           // Also trigger proactive agent for additional processing
           try {
@@ -105,11 +138,20 @@ async function pollContacts() {
           console.log(`[ContactPoller] No thank you instruction found or no email address for contact ${latestContact.id}`);
         }
         
-        // Mark this contact as processed
+        // Mark this contact as processed (multiple tracking mechanisms)
         lastProcessedContactIds[userId] = latestContact.id;
+        processedContactsInSession.add(contactKey);
         
       } catch (userError) {
         console.error(`[ContactPoller] Error processing user ${userId}:`, userError);
+        
+        // If it's an authentication error, log it but don't stop processing other users
+        if (userError instanceof Error && userError.message && userError.message.includes('authentication expired')) {
+          console.log(`[ContactPoller] User ${userId} needs to re-authenticate with Google`);
+        }
+        
+        // Continue with next user instead of stopping the entire poll
+        continue;
       }
     }
   } catch (error) {
@@ -120,6 +162,9 @@ async function pollContacts() {
 export function startContactPolling() {
   console.log('🔄 Contact polling started...');
   setInterval(() => {
-    pollContacts().catch(err => console.error('Contact polling error:', err));
+    pollContacts().catch(err => {
+      console.error('[ContactPoller] General polling error:', err);
+      // Don't let errors stop the polling - it will retry on next interval
+    });
   }, POLL_INTERVAL_MS);
 } 
